@@ -47,7 +47,7 @@ class Conv1dBlock(nn.Module):
         Conv1d --> GroupNorm --> Mish
     '''
 
-    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
+    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8, device='cuda'):
         super().__init__()
 
         self.block = nn.Sequential(
@@ -57,6 +57,9 @@ class Conv1dBlock(nn.Module):
             Rearrange('batch channels 1 horizon -> batch channels horizon'),
             nn.Mish(),
         )
+        
+        self.device = device
+        self.to(device)
 
     def forward(self, x):
         return self.block(x)

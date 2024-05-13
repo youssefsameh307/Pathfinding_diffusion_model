@@ -6,23 +6,25 @@ from .model_blocks import SinusoidalPosEmb, Downsample1d, Upsample1d, Conv1dBloc
 import torch
 class ResidualTemporalBlock(nn.Module):
 
-    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
+    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5, device='cuda'):
         super().__init__()
 
         self.blocks = nn.ModuleList([
-            Conv1dBlock(inp_channels, out_channels, kernel_size),
-            Conv1dBlock(out_channels, out_channels, kernel_size),
+            Conv1dBlock(inp_channels, out_channels, kernel_size, device=device),
+            Conv1dBlock(out_channels, out_channels, kernel_size, device=device),
         ])
 
         self.time_mlp = nn.Sequential(
             nn.Mish(),
-            nn.Linear(embed_dim, out_channels),
-            Rearrange('batch t -> batch t 1'),
+            nn.Linear(embed_dim, out_channels, device=device),
+            Rearrange('batch t -> batch t 1')
         )
 
-        self.residual_conv = nn.Conv1d(inp_channels, out_channels, 1) \
-            if inp_channels != out_channels else nn.Identity()
+        self.residual_conv = nn.Conv1d(inp_channels, out_channels, 1, device=device) \
+            if inp_channels != out_channels else nn.Identity(device=device)
 
+        self.to(device)
+        self.device = device  
     def forward(self, x, t):
         '''
             x : [ batch_size x inp_channels x horizon ]
@@ -34,6 +36,7 @@ class ResidualTemporalBlock(nn.Module):
         out = self.blocks[1](out)
         return out + self.residual_conv(x)
 
+
 class TemporalUnet(nn.Module):
 
     def __init__(
@@ -41,7 +44,8 @@ class TemporalUnet(nn.Module):
         horizon,
         transition_dim,
         cond_dim = 0, # NOT IMPLEMENTED YET
-        dim=32,
+        encoder=None,
+        dim=32, # Dimenstion for internal representation of conditioning
         dim_mults=(1, 2, 4),
         attention=False,
         device='cuda'
@@ -49,12 +53,16 @@ class TemporalUnet(nn.Module):
         super().__init__()
 
         self.device = device
-        self.to(device)
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
         print(f'[ models/temporal ] Channel dimensions: {in_out}')
-
+        # initialize encoder
+        if encoder is not None:
+            self.encoder = encoder
+            self.encoder.to(device)
+        
+        # initialize time embedding
         time_dim = dim
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(dim),
@@ -73,8 +81,8 @@ class TemporalUnet(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(nn.ModuleList([
-                ResidualTemporalBlock(dim_in, dim_out, embed_dim=time_dim, horizon=horizon),
-                ResidualTemporalBlock(dim_out, dim_out, embed_dim=time_dim, horizon=horizon),
+                ResidualTemporalBlock(dim_in, dim_out, embed_dim=time_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_out, dim_out, embed_dim=time_dim, horizon=horizon, device=device),
                 Residual(PreNorm(dim_out, LinearAttention(dim_out))) if attention else nn.Identity(),
                 Downsample1d(dim_out) if not is_last else nn.Identity()
             ]))
@@ -83,16 +91,16 @@ class TemporalUnet(nn.Module):
                 horizon = horizon // 2
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
         self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim))) if attention else nn.Identity()
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon)
+        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
             self.ups.append(nn.ModuleList([
-                ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=time_dim, horizon=horizon),
-                ResidualTemporalBlock(dim_in, dim_in, embed_dim=time_dim, horizon=horizon),
+                ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=time_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_in, dim_in, embed_dim=time_dim, horizon=horizon, device=device),
                 Residual(PreNorm(dim_in, LinearAttention(dim_in))) if attention else nn.Identity(),
                 Upsample1d(dim_in) if not is_last else nn.Identity()
             ]))
@@ -104,6 +112,9 @@ class TemporalUnet(nn.Module):
             Conv1dBlock(dim, dim, kernel_size=5),
             nn.Conv1d(dim, transition_dim, 1),
         )
+        
+        self.to(device)
+
 
 
  
@@ -114,7 +125,17 @@ class TemporalUnet(nn.Module):
 
         x = einops.rearrange(x, 'b h t -> b t h')
 
-        t = self.time_mlp(time)
+        t = tim_emb = self.time_mlp(time)
+        # Add encoding of the environment to the time embedding
+        if cond is not None:
+            emb = self.encoder(cond)
+            # Do this operation on the cpu 
+            # t = t.cpu()
+            # emb = emb.cpu()
+            t = torch.empty(tim_emb.shape, device=self.device)
+            t = torch.add(tim_emb, emb) # as doing tim_emb + emb will throw cuda error
+            
+
         h = []
 
         for resnet, resnet2, attn, downsample in self.downs:
@@ -139,6 +160,7 @@ class TemporalUnet(nn.Module):
 
         x = einops.rearrange(x, 'b t h -> b h t')
         return x
+
 
 class EMA:
     """Exponential Moving Average (EMA) class.

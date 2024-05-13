@@ -54,6 +54,7 @@ class PathsDataset(Dataset):
         self.min_values =  torch.tensor([self.MIN_X_COORDINATE, self.MIN_Y_COORDINATE], device=device)
         # Max value per coordinate (x, y)
         self.max_values = torch.tensor([self.MAX_X_COORDINATE, self.MAX_Y_COORDINATE], device=device)
+        # number of worlds in the dataset
 
         print(f'data shape: {self.data.shape}, min_values: {self.min_values}, max_values: {self.max_values}')
 
@@ -61,7 +62,12 @@ class PathsDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        item = {
+            'path': self.data[idx],
+            'world_indx': self.worlds_indx[idx],
+            'world_img': self.world_images[self.worlds_indx[idx]]
+        }
+        return item
 
     def get_og_item(self, idx):
         item = {
@@ -71,6 +77,8 @@ class PathsDataset(Dataset):
         }
         return item
 
+    def world_image_from_world_indx(self, world_indx):
+        return self.world_images[world_indx]
 
 
     def get_plot_for_path(self, idx) -> matplotlib.figure.Figure:
