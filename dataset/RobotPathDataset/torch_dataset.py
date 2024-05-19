@@ -8,12 +8,14 @@ from wzk import sql2, trajectory
 import matplotlib
 import matplotlib.pyplot as plt
 from .normalizer import MinMaxFeatureNormalizer
+from .obstacle_distance import img2dist_img, img2grad
+
 
 class PathsDataset(Dataset):
-    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalize=True, normalizer=None,n_of_waypoints=20):
+    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalizer=None):
         # CONSTANTS
-        n_voxels = 64
-        voxel_size = 10 / 64     # in m
+        self.voxel = n_voxels = 64
+        self.voxel_size = 10 / 64     # in m
         self.extent = [0, 10, 0, 10]  # in m
         self.MAX_X_COORDINATE = 10
         self.MAX_Y_COORDINATE = 10
@@ -21,29 +23,40 @@ class PathsDataset(Dataset):
         self.MIN_Y_COORDINATE = 0
 
         # Configuration of data generation
-        self.n_waypoints = n_of_waypoints  # start + 20 inner points + end
-        self.n_dim = 2
-        self.n_paths_per_world = 10000
-        self.n_worlds = 1
-        self.worlds = sql2.get_values_sql(file=file, table="worlds", values_only=False)
-        self.world_images = sql2.compressed2img(img_cmp=self.worlds.img_cmp.values, shape=(n_voxels, n_voxels), dtype=bool)
+        self.n_waypoints = n_waypoints  # start + 20 inner points + end
+        self.n_dim = n_dim
+        self.n_paths_per_world = n_paths_per_world
+        self.n_worlds = n_worlds
+        self.all_worlds = sql2.get_values_sql(file=file, table="worlds", values_only=False)
+        self.all_world_images = sql2.compressed2img(img_cmp=self.all_worlds.img_cmp.values, shape=(n_voxels, n_voxels), dtype=bool)
 
-
-        batch_size = 32
-        n_total = n_paths_per_world * n_worlds
-        # batch_idx =     [0, 1, 2, 1000, 2000, 3500]
-        # path_idx_for_batch = np.random.choice(np.arange(n_total), size=batch_size, replace=False)
-        path_idx = np.arange(n_total)
-
+        # always 1000 paths belong to one world
+        # 0...999     -> world 0
+        # 1000...1999 -> world 1
+        # 2000...2999 -> world 2
+        self.MAX_PATHS_PER_WORLD = 1000
+        self.MAX_WORLDS = 5000
+        # Create indexes for the paths
+        world_idx, path_idx = self.get_indecies(n_paths_per_world, n_worlds)
+        # path_idx = np.random.choice(np.arange(self.MAX_WORLDS*n_worlds), size=n_worlds*n_paths_per_world, replace=False)
+        # path_idx = np.arange(10000)
         paths = sql2.get_values_sql(file=file, table='paths', rows=path_idx, values_only=False)
         self.worlds_indx = paths.world_i32.values
-
-        path_coordinates = sql2.object2numeric_array(paths.q_f32.values)
-        path_coordinates = path_coordinates.reshape(-1, n_waypoints, n_dim)
+        self.world_images = self.all_world_images[self.worlds_indx]
+        
+        # get distance field images
+        self.world_distance_field_images = self.preprocess_world_images(self.world_images, self.worlds_indx,self.voxel_size)
+        path_coordinates_og = sql2.object2numeric_array(paths.q_f32.values)
+        path_coordinates_og = path_coordinates_og.reshape(-1, 20, n_dim) # reshape to (n_paths, n_waypoints, n_dim) = (n_total, 20, 2) because 20 is the default number of waypoints
+        # map this path to n_waypoints
+        if n_waypoints != 20:
+            path_coordinates = self.preprocess_path_coordinates(path_coordinates_og) # (n_total, n_of_waypoints, 2)
+        else:
+            path_coordinates = path_coordinates_og
 
         self.data = torch.tensor(path_coordinates, device=device) # torch tensor
         self.og_data = self.data.clone()
-        if normalize:
+        if normalizer:
             # Normalize the data
             normalizer.initialize([self.MIN_X_COORDINATE, self.MIN_Y_COORDINATE], [self.MAX_X_COORDINATE, self.MAX_Y_COORDINATE], device=device)
             self.normalizer = normalizer
@@ -56,7 +69,7 @@ class PathsDataset(Dataset):
         self.max_values = torch.tensor([self.MAX_X_COORDINATE, self.MAX_Y_COORDINATE], device=device)
         # number of worlds in the dataset
 
-        print(f'data shape: {self.data.shape}, min_values: {self.min_values}, max_values: {self.max_values}')
+        print(f'data shape: {self.data.shape}, min_values: {self.min_values}, max_values: {self.max_values}, n_worlds:{len(np.unique(self.worlds_indx))}, samples: {len(self.data)}')
 
     def __len__(self):
         return len(self.data)
@@ -65,7 +78,8 @@ class PathsDataset(Dataset):
         item = {
             'path': self.data[idx],
             'world_indx': self.worlds_indx[idx],
-            'world_img': self.world_images[self.worlds_indx[idx]]
+            'world_img': self.world_images[idx],
+            'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
         }
         return item
 
@@ -73,14 +87,66 @@ class PathsDataset(Dataset):
         item = {
             'path': self.og_data[idx],
             'world_indx': self.worlds_indx[idx],
-            'world_img': self.world_images[self.worlds_indx[idx]]
+            'world_img': self.world_images[idx],
+            'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
+
         }
         return item
+    
+    def get_distance_field_image(self, idx, voxel_size=10/64):
+        return img2dist_img(img=self.world_images[idx], voxel_size=voxel_size, add_boundary=False)
+    
+    ### Preprocessing functions ###
+
+    def preprocess_world_images(self, world_images, world_indx,voxel_size):
+        return self.transform_world_images_to_distance_field(world_images,world_indx, voxel_size)
+    
+    def transform_world_images_to_distance_field(self, world_images, world_indx, voxel_size):
+        """Transforms world images to distance field images. Does not transform all of them, only the ones that are needed for preformance needed
+
+
+        Args:
+            world_images (numpy.ndarray): Array of world images.
+            world_indx (numpy.ndarray): Array of world indices.
+            voxel_size (float): Voxel size for distance field conversion.
+
+        Returns:
+            numpy.ndarray: Array of distance field images.
+        """
+        # loop over each unique world and create a distance field image
+        world_distance_field_images = {}
+        for indx in np.unique(world_indx):
+            world_distance_field_images[indx] = torch.tensor(img2dist_img(img=world_images[indx], voxel_size=voxel_size, add_boundary=False), dtype=torch.float32)
+            print(f'world_indx: {indx}, world_distance_field_images: {world_distance_field_images[indx].shape}')
+        return world_distance_field_images
+        
+        
+    def preprocess_path_coordinates(self, path_coordinates):
+            # do it but split up in chunks
+            num_of_chunks = 10
+            chunk_size = len(path_coordinates) // num_of_chunks
+            path_coordinates = np.array_split(path_coordinates, num_of_chunks)
+            for i in range(num_of_chunks):
+                path_coordinates[i] = trajectory.get_path_adjusted(path_coordinates[i], n=self.n_waypoints)
+            all_paths =  np.concatenate(path_coordinates, axis=0)
+            return torch.tensor(all_paths.astype(np.float32))
 
     def world_image_from_world_indx(self, world_indx):
-        return self.world_images[world_indx]
+        return self.all_world_images[world_indx]
 
 
+    def get_indecies(self, n_paths_per_world, n_worlds):
+        # choose n random worlds from all worlds
+        world_idx = np.random.choice(np.arange(len(self.all_worlds)), size=n_worlds, replace=False)
+        # create a list of paths for each world
+        path_idx = []
+        for i in world_idx:
+            start_of_range = i*n_paths_per_world
+            end_of_range = (i+1)*n_paths_per_world
+            range_of_paths = np.arange(start_of_range, end_of_range)
+            world_path_idx = np.random.choice(range_of_paths, size=n_paths_per_world, replace=False)
+            path_idx.extend(world_path_idx)
+        return world_idx, path_idx
     def get_plot_for_path(self, idx) -> matplotlib.figure.Figure:
         """
         This function plots a given path on a 2D grid with specified obstacles.
@@ -93,13 +159,13 @@ class PathsDataset(Dataset):
             tuple[Figure, axes] : A tuple containing the Matplotlib figure and axis objects.
         """
         path = self.get_og_item(idx)['path'].cpu().numpy()
-        world = self.world_images[idx]
+        world = self.all_world_images[idx]
         fig, ax = plt.subplots()
 
         ax.plot(path[:, 0], path[:, 1], 'o-')
         world_indx = self.worlds_indx[idx]
 
-        ax.imshow(self.world_images[world_indx].T, origin='lower', extent=self.extent, cmap='binary', alpha=0.5)
+        ax.imshow(self.all_world_images[world_indx].T, origin='lower', extent=self.extent, cmap='binary', alpha=0.5)
         return fig, ax
 
     def plot_batch_of_pathes(self, batch:np.ndarray) -> matplotlib.figure.Figure:

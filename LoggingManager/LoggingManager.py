@@ -29,8 +29,8 @@ class LoggingManager:
         self.logger.setLevel(logging.INFO)  # Set default log level
 
         # Create a console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.ERROR)
+        # console_handler = logging.StreamHandler()
+        # console_handler.setLevel(logging.ERROR)
         
         # Create a file handler
         file_handler = logging.FileHandler(os.path.join(self.log_dir, self.log_file))
@@ -38,7 +38,7 @@ class LoggingManager:
         
         # Set the log format
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(formatter)
+        # console_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
 
         # Add handlers to the logger
