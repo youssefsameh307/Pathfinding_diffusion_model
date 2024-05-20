@@ -83,6 +83,12 @@ class LoggingManager:
     def tb_log_figure(self, fig, name:str, step):
         self.summary_writer.add_figure(name, fig, step)
         
+    def tb_log_graph(self, model, input_tensor=None):
+        self.summary_writer.add_graph(model, input_tensor)
+        
+    def tb_log_embedding_space(self, features, metadata, label_img ,tag='embedding_space'):
+        self.summary_writer.add_embedding(features, metadata, label_img, tag)
+        
 
     def log_message(self, message, print_message=False,level='info'):
         # Log a message at the specified level

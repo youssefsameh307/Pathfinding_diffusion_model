@@ -77,6 +77,7 @@ class TemporalUnet(nn.Module):
         num_resolutions = len(in_out)
 
         print(in_out)
+        horizon_values = [horizon]
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
@@ -89,13 +90,16 @@ class TemporalUnet(nn.Module):
 
             if not is_last:
                 horizon = horizon // 2
+                horizon_values.append(horizon)
 
         mid_dim = dims[-1]
         self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
         self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim))) if attention else nn.Identity()
         self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
 
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
+        out_in = reversed(in_out[1:])
+        for ind, (dim_in, dim_out) in enumerate(out_in):
+            
             is_last = ind >= (num_resolutions - 1)
 
             self.ups.append(nn.ModuleList([
@@ -106,7 +110,7 @@ class TemporalUnet(nn.Module):
             ]))
 
             if not is_last:
-                horizon = horizon * 2
+                horizon = horizon_values.pop()
 
         self.final_conv = nn.Sequential(
             Conv1dBlock(dim, dim, kernel_size=5),

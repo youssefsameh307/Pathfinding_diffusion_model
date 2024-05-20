@@ -56,17 +56,27 @@ class FlattenEmbeder(Encoder):
 
     """
 
-    def __init__(self, input_sample,  embedding_dim=64,  normalizer=None,device='cuda'):
+    def __init__(self, input_sample,  embedding_dim=64,  normalizer=None,device='cuda', num_of_hidden_layers=1):
         super(FlattenEmbeder, self).__init__()
 
 
         # get the input dimension
         input_dim = input_sample.view(-1).size(0)
+        
+        # create hidden layers
+        hidden_layers = []
+        current_dim = input_dim
+        for i in range(num_of_hidden_layers-1):
+            hidden_layers.append(nn.Linear(current_dim, current_dim//2))
+            hidden_layers.append(nn.SELU())
+            current_dim = current_dim//2
 
         # flatten the input sample
         self.embedding = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_dim, embedding_dim),
+            # add the hidden layers
+            *hidden_layers,
+            nn.Linear(current_dim, embedding_dim),
             nn.SELU()
         )
         self.device = device
