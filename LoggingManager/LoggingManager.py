@@ -73,6 +73,9 @@ class LoggingManager:
         # Increment the step counter after logging
         self.training_step += 1
     
+    def tb_scalar(self, name, value):
+        self.summary_writer.add_scalar(name, value, self.training_step)
+    
     def epoch_checkpoint_images(self, fig):
           self.summary_writer.add_figure('Fig1', fig)
 
@@ -83,11 +86,15 @@ class LoggingManager:
     def tb_log_figure(self, fig, name:str, step):
         self.summary_writer.add_figure(name, fig, step)
         
-    def tb_log_graph(self, model, input_tensor=None):
-        self.summary_writer.add_graph(model, input_tensor)
+    def tb_log_graph(self, model, input=None):
+        self.summary_writer.add_graph(model, input)
         
-    def tb_log_embedding_space(self, features, metadata, label_img ,tag='embedding_space'):
-        self.summary_writer.add_embedding(features, metadata, label_img, tag)
+    def tb_log_embedding_space(self, features, metadata, label_img,tag='embedding_space'):
+        self.summary_writer.add_embedding(features, metadata, label_img, tag=tag, global_step=self.training_step)
+        
+    def tb_log_histogram(self, values, tag):
+        self.summary_writer.add_histogram(tag, values, self.training_step)
+
         
 
     def log_message(self, message, print_message=False,level='info'):

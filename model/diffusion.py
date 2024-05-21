@@ -31,7 +31,7 @@ class Diffusion():
         return torch.randint(low=1, high=self.noise_steps, size=(n,), device=self.device)
 
     @torch.no_grad()
-    def sample(self, model,n, save_rate=20, cond=None,mu=0, sigma=1):
+    def sample(self, model,n, cfg_scale=3,save_rate=20, cond=None,mu=0, sigma=1):
         logging.info(f"Sampling {n} new images....")
         model.eval()
         x = mu + sigma *  torch.randn((n, *self.input_shape)).to(self.device)
@@ -45,6 +45,9 @@ class Diffusion():
             t = (torch.ones(n) * i).long().to(self.device)
 
             predicted_noise = model(x, t, cond)
+            if cfg_scale:
+                uncondditional_predicted_noise = model(x, t, cond=None)
+                predicted_noise = torch.lerp(uncondditional_predicted_noise, predicted_noise, cfg_scale)
 
             alpha = self.alpha[t][:, None, None]
 
@@ -69,7 +72,7 @@ class Diffusion():
 
 
     @torch.no_grad()
-    def sample_with_constraints(self, model, n, constraints={}, cond=None, normalizer=None,save_rate=20, mu=0, sigma=1):
+    def sample_with_constraints(self, model, n, constraints={}, cond=None, cfg_scale=3,normalizer=None,save_rate=20, mu=0, sigma=1):
         """sample with constraints. constraints is a dictionary with keys as timesteps and values as the constraints at that timestep. 
         Sampling will reset the constraints at the given timesteps to the given values at each timestep. 
 
@@ -105,7 +108,9 @@ class Diffusion():
             t = (torch.ones(n) * i).long().to(self.device)
 
             predicted_noise = model(x, t, cond)
-
+            if cfg_scale:
+                uncondditional_predicted_noise = model(x, t, cond=None)
+                predicted_noise = torch.lerp(uncondditional_predicted_noise, predicted_noise, cfg_scale)
             alpha = self.alpha[t][:, None, None]
 
             alpha_hat = self.alpha_hat[t][:, None, None]

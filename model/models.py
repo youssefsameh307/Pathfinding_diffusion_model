@@ -133,6 +133,7 @@ class TemporalUnet(nn.Module):
         # Add encoding of the environment to the time embedding
         if cond is not None:
             emb = self.encoder(cond)
+            self.last_emb = emb
             # Do this operation on the cpu 
             # t = t.cpu()
             # emb = emb.cpu()
@@ -165,6 +166,8 @@ class TemporalUnet(nn.Module):
         x = einops.rearrange(x, 'b t h -> b h t')
         return x
 
+    def get_last_embedding(self):
+        return self.last_emb
 
 class EMA:
     """Exponential Moving Average (EMA) class.
