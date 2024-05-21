@@ -16,6 +16,10 @@ class MinMaxFeatureNormalizer:
             min_values = torch.tensor(min_values)
         if isinstance(max_values, list):
             max_values = torch.tensor(max_values)
+        if isinstance(min_values, np.ndarray):
+            min_values = torch.tensor(min_values)
+        if isinstance(max_values, np.ndarray):
+            max_values = torch.tensor(max_values)
 
         # Ensure the max values are greater than the min values
         assert torch.all(max_values > min_values), "Max values must be greater than min values"
