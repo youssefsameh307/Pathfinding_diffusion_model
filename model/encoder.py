@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
@@ -59,6 +60,14 @@ class FlattenEmbeder(Encoder):
     def __init__(self, input_sample,  embedding_dim=64,  normalizer=None,device='cuda', num_of_hidden_layers=1):
         super(FlattenEmbeder, self).__init__()
 
+        self.min_values = min_values = torch.ones((64, 64)) * -1
+        self.max_values = max_values = torch.ones((64, 64)) * 3.5
+
+        if normalizer is not None:
+            self.normalizer = normalizer
+            normalizer.initialize(min_values, max_values, device=device)
+        else:
+            self.normalizer = None
 
         # get the input dimension
         input_dim = input_sample.view(-1).size(0)
@@ -93,5 +102,7 @@ class FlattenEmbeder(Encoder):
             torch.Tensor: The embedded tensor.
 
         """
-
+        
+        if self.normalizer is not None:
+            x = self.normalizer(x)
         return self.embedding(x)

@@ -132,3 +132,8 @@ dmypy.json
 
 # logs
 logs/
+
+# all model.pth
+*.pth
+
+data/

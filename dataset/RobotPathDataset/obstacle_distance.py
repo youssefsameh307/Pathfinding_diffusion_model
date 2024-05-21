@@ -219,6 +219,7 @@ def test():
     mpl2.imshow(ax=ax[1], limits=limits, img=dimg, cmap="Greys")
     mpl2.imshow(ax=ax[2], limits=limits, img=dimg_grad[0, :, :], cmap="Greys")
     mpl2.imshow(ax=ax[3], limits=limits, img=dimg_grad[1, :, :], cmap="Greys")
+    print("done")
 
 
 if __name__ == "__main__":

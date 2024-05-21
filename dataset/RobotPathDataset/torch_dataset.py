@@ -39,13 +39,15 @@ class PathsDataset(Dataset):
         # Create indexes for the paths
         world_idx, path_idx = self.get_indecies(n_paths_per_world, n_worlds)
         # path_idx = np.random.choice(np.arange(self.MAX_WORLDS*n_worlds), size=n_worlds*n_paths_per_world, replace=False)
-        # path_idx = np.arange(10000)
+        # path_idx = np.arange(1000)
         paths = sql2.get_values_sql(file=file, table='paths', rows=path_idx, values_only=False)
         self.worlds_indx = paths.world_i32.values
-        self.world_images = self.all_world_images[self.worlds_indx]
         
         # get distance field images
-        self.world_distance_field_images = self.preprocess_world_images(self.world_images, self.worlds_indx,self.voxel_size)
+        self.world_distance_field_images = self.preprocess_world_images(self.all_world_images, self.worlds_indx,self.voxel_size)
+        # only keep the world images that are needed
+        self.world_images = self.all_world_images[self.worlds_indx]
+
         path_coordinates_og = sql2.object2numeric_array(paths.q_f32.values)
         path_coordinates_og = path_coordinates_og.reshape(-1, 20, n_dim) # reshape to (n_paths, n_waypoints, n_dim) = (n_total, 20, 2) because 20 is the default number of waypoints
         # map this path to n_waypoints
@@ -77,6 +79,7 @@ class PathsDataset(Dataset):
     def __getitem__(self, idx):
         item = {
             'path': self.data[idx],
+            'og_path': self.og_data[idx],
             'world_indx': self.worlds_indx[idx],
             'world_img': self.world_images[idx],
             'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
@@ -123,7 +126,10 @@ class PathsDataset(Dataset):
         
     def preprocess_path_coordinates(self, path_coordinates):
             # do it but split up in chunks
-            num_of_chunks = 10
+            if len(path_coordinates) < 100:
+                num_of_chunks = 1
+            else:
+                num_of_chunks = 100
             chunk_size = len(path_coordinates) // num_of_chunks
             path_coordinates = np.array_split(path_coordinates, num_of_chunks)
             for i in range(num_of_chunks):
