@@ -106,3 +106,5 @@ class FlattenEmbeder(Encoder):
         if self.normalizer is not None:
             x = self.normalizer(x)
         return self.embedding(x)
+
+

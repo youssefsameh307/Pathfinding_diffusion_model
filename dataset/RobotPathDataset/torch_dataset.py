@@ -119,7 +119,7 @@ class PathsDataset(Dataset):
         # loop over each unique world and create a distance field image
         world_distance_field_images = {}
         for indx in np.unique(world_indx):
-            world_distance_field_images[indx] = torch.tensor(img2dist_img(img=world_images[indx], voxel_size=voxel_size, add_boundary=False), dtype=torch.float32)
+            world_distance_field_images[indx] = torch.tensor(img2dist_img(img=world_images[indx], voxel_size=voxel_size, add_boundary=True), dtype=torch.float32)
             print(f'world_indx: {indx}, world_distance_field_images: {world_distance_field_images[indx].shape}')
         return world_distance_field_images
         

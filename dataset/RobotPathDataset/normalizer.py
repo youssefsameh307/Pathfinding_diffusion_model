@@ -43,9 +43,12 @@ class MinMaxFeatureNormalizer:
         Returns:
             Tensor: The normalized tensor, with values typically in the range [0, 1].
         """
+        if self.min_values.device != x.device:
+            self.min_values = self.min_values.to(x.device)
+            self.max_values = self.max_values.to(x.device)
         # Normalize using min-max scaling
         x = (x - self.min_values) / (self.max_values - self.min_values + self.epsilon)
-        return x * 2 - 1  # Normalize to the range [-1, 1]
+        return x  # ADD * 2 - 1  TO Normalize to the range [-1, 1]
     def denormalize(self, x, is_numpy=False):
         """
         Denormalize the input tensor using min-max normalization.
