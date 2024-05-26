@@ -25,6 +25,52 @@ class SinusoidalPosEmb(nn.Module):
         emb = x[:, None] * emb[None, :]
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
+    
+class SinusoidalPosEmbedding2D(nn.Module):
+    def __init__(self, d):
+        """
+        Args:
+            d (int): Dimension of the embedding. Must be a multiple of 4.
+        """
+        super(SinusoidalPosEmbedding2D, self).__init__()
+        assert d % 4 == 0, "Dimension d must be a multiple of 4."
+        self.d = d
+        self.half_d = d // 2
+
+        # Precompute the div_term
+        even_indices = torch.arange(0, self.half_d, 2).float()
+        self.div_term = torch.exp(even_indices * (-torch.log(torch.tensor(10000.0)) / self.half_d))
+
+    def forward(self, points):
+        """
+        Args:
+            points (torch.Tensor): Tensor of shape (Batch, Waypoints, 2) containing x and y coordinates.
+        
+        Returns:
+            torch.Tensor: Sinusoidal embeddings of shape (Batch, Waypoints, d).
+        """
+        batch_size, _ = points.shape
+        
+        x = points[:, 0]  # (Batch, Waypoints)
+        y = points[:, 1]  # (Batch, Waypoints)
+        
+        if x.device != self.div_term.device:
+            self.div_term = self.div_term.to(x.device)
+            self.d
+        # Sinusoidal embedding for x
+        x_embedding = torch.zeros(batch_size, self.half_d, device=points.device)
+        x_embedding[:, 0::2] = torch.sin(x.unsqueeze(-1) * self.div_term)
+        x_embedding[:, 1::2] = torch.cos(x.unsqueeze(-1) * self.div_term)
+        
+        # Sinusoidal embedding for y
+        y_embedding = torch.zeros(batch_size, self.half_d, device=points.device)
+        y_embedding[:, 0::2] = torch.sin(y.unsqueeze(-1) * self.div_term)
+        y_embedding[:, 1::2] = torch.cos(y.unsqueeze(-1) * self.div_term)
+        
+        # Concatenate x and y embeddings
+        embedding = torch.cat([x_embedding, y_embedding], dim=-1)
+        
+        return embedding
 
 class Downsample1d(nn.Module):
     def __init__(self, dim):
