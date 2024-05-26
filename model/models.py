@@ -2,7 +2,7 @@ from torch import nn
 import einops
 from einops.layers.torch import Rearrange
 import pdb
-from .model_blocks import SinusoidalPosEmb, Downsample1d, Upsample1d, Conv1dBlock, Residual, PreNorm, LinearAttention
+from .model_blocks import SinusoidalPosEmb, Downsample1d, Upsample1d, Conv1dBlock, Residual, PreNorm, LinearAttention, SinusoidalPosEmbedding2D
 import torch
 class ResidualTemporalBlock(nn.Module):
 
@@ -70,7 +70,23 @@ class TemporalUnet(nn.Module):
             nn.Mish(),
             nn.Linear(dim * 4, dim),
         )
+        
+        
+        # initialize embedding start pos
+        self.start_pos_mlp = nn.Sequential(
+            SinusoidalPosEmbedding2D(dim),
+            nn.Linear(dim, dim * 4),
+            nn.Mish(),
+            nn.Linear(dim * 4, dim),
+        )
 
+        # initalize embedding end pos
+        self.end_pos_mlp = nn.Sequential(
+            SinusoidalPosEmbedding2D(dim),
+            nn.Linear(dim, dim * 4),
+            nn.Mish(),
+            nn.Linear(dim * 4, dim),
+        )
 
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
@@ -122,7 +138,7 @@ class TemporalUnet(nn.Module):
 
 
  
-    def forward(self, x, time, cond=None):
+    def forward(self, x, time, cond=None, start_pos=None, end_pos=None):
         '''
             x : [ batch x horizon x transition ]
         '''
@@ -140,6 +156,12 @@ class TemporalUnet(nn.Module):
             t = torch.empty(tim_emb.shape, device=self.device)
             t = torch.add(tim_emb, emb) # as doing tim_emb + emb will throw cuda error
             
+        if start_pos is not None:
+            emb = self.start_pos_mlp(start_pos)
+            t = torch.add(t, emb)
+        if end_pos is not None:
+            emb = self.end_pos_mlp(end_pos)
+            t = torch.add(t, emb)
 
         h = []
 

@@ -159,8 +159,8 @@ class Diffusion():
 
         x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
         # set constraints
-        x[:, 0, :] = paths[:, 0]
-        x[:, -1, :] = paths[:, -1]
+        start_pos = x[:, 0, :] = paths[:, 0]
+        end_pos = x[:, -1, :] = paths[:, -1]
 
         # array to keep track of generated steps for plotting
         intermediate = [] 
@@ -168,7 +168,7 @@ class Diffusion():
 
             t = (torch.ones(n) * i).long().to(self.device)
 
-            predicted_noise = model(x, t, cond)
+            predicted_noise = model(x, t, cond, start_pos, end_pos)
             if cfg_scale > 0:
                 uncondditional_predicted_noise = model(x, t, cond=None)
                 predicted_noise = torch.lerp(uncondditional_predicted_noise, predicted_noise, cfg_scale)
