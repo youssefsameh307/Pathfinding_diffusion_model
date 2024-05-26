@@ -83,7 +83,9 @@ class LoggingManager:
     def tb_diffusion_sampling(self, samples:np.ndarray, name:str):
         self.summary_writer.add_images(name, samples)
 
-    def tb_log_figure(self, fig, name:str, step):
+    def tb_log_figure(self, fig, name:str, step=None):
+        if step == None:
+            step = self.training_step
         self.summary_writer.add_figure(name, fig, step)
         
     def tb_log_graph(self, model, input=None):

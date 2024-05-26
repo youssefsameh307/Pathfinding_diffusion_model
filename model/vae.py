@@ -1,8 +1,11 @@
 from typing import Any, List
 import torch
 from torch import Tensor, nn
+from torch import optim
 from torch.nn import functional as F
 from torch import nn
+import matplotlib.pyplot as plt
+import pytorch_lightning as pl
 from abc import abstractmethod
 
 class BaseVAE(nn.Module):
@@ -120,6 +123,7 @@ class VanillaVAE(BaseVAE):
         """
         if self.normalizer is not None:
             input = self.normalizer.normalize(input)
+
         result = self.encoder(input)
         result = torch.flatten(result, start_dim=1)
 
@@ -212,3 +216,111 @@ class VanillaVAE(BaseVAE):
         """
 
         return self.forward(x)[0]
+
+from torch import Tensor
+
+
+class VAEXperiment(pl.LightningModule):
+
+    def __init__(self,
+                 vae_model: BaseVAE,
+                 params: dict) -> None:
+        super(VAEXperiment, self).__init__()
+        self.save_hyperparameters()
+
+        self.model = vae_model
+        self.params = params
+        self.curr_device = None
+
+
+    def training_step(self, batch, batch_idx):
+        real_img = batch
+        self.curr_device = real_img.device
+
+        results = self.forward(real_img)
+        train_loss = self.model.loss_function(*results,
+                                              M_N = 0.0016, #al_img.shape[0]/ self.num_train_imgs,
+        )
+
+        self.log_dict({f'train/{key}': val.item() for key, val in train_loss.items()}, sync_dist=True)
+
+        return train_loss['loss']
+    def validation_step(self, batch, batch_idx, optimizer_idx = 0):
+        real_img = batch
+        self.curr_device = real_img.device
+
+        results = self.forward(real_img)
+        val_loss = self.model.loss_function(*results,
+                                            M_N = 0.0016, #real_img.shape[0]/ self.num_val_imgs,
+        )
+
+        self.log_dict({f"val/val_{key}": val.item() for key, val in val_loss.items()}, sync_dist=True)
+        
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), lr=1e-3)
+        # optimizer =  Prodigy(self.parameters(), lr=1.)
+        return optimizer
+    
+    def forward(self, input: Tensor, **kwargs) -> Tensor:
+        return self.model(input, **kwargs)
+    
+    def on_train_epoch_end(self):
+        NUM_SAMPLES = 8
+        # Get some batch of validation data
+        with torch.no_grad():
+            all_preds = next(iter(self.trainer.train_dataloader))
+            data = all_preds[0:NUM_SAMPLES]
+            data = data.to(self.curr_device)
+
+            # Forward pass
+            results = self.forward(data)
+            recon_results = results[0]
+        # Visualize results
+        self.visualize_results(data, recon_results, 'reconstructions/train')
+        if self.current_epoch % 10 == 0:
+            self.visualize_embeddings()
+            
+    def on_validation_epoch_end(self):
+        NUM_SAMPLES = 8
+        # Get some batch of validation data
+        with torch.no_grad():
+            all_preds = next(iter(self.trainer.val_dataloaders))
+            data = all_preds[0:NUM_SAMPLES]
+            data = data.to(self.curr_device)
+
+            # Forward pass
+            results = self.forward(data)
+            recon_results = results[0]
+        # Visualize results
+        self.visualize_results(data, recon_results, tag='reconstructions/val')     
+    
+    def visualize_embeddings(self):
+        tensorboard = self.logger.experiment
+        # get 4 batches of data
+        all_preds = next(iter(self.trainer.train_dataloader))
+        for i in range(4):
+            all_preds = torch.cat((all_preds, next(iter(self.trainer.train_dataloader))), dim=0)    
+        data = all_preds.to(self.curr_device)
+        # get embeddings
+        mu, _ = self.model.encode(data)
+        # log embeddings
+        tensorboard.add_embedding(mu,
+                                  global_step=self.current_epoch,
+                                  tag='latent_space',
+                                  label_img=data) 
+        
+        
+    def visualize_results(self, real_img, results, tag='reconstructions'):
+        tensorboard = self.logger.experiment
+        n = min(real_img.size(0), 8)
+        real_imgs = real_img[:n]
+        recon_imgs = results[:n]
+        fig, ax = plt.subplots(n,2, figsize=(10,5))
+        for i in range(n):
+            ax[i,0].imshow(real_imgs[i].squeeze().T.cpu().detach().numpy(), origin='lower', extent=[0, 10, 0, 10], cmap='viridis')
+            ax[i,0].set_title('Original')
+            ax[i,1].imshow(recon_imgs[i].squeeze().T.cpu().detach().numpy(), origin='lower', extent=[0, 10, 0, 10], cmap='viridis')
+            ax[i,1].set_title('Reconstructed')
+        tensorboard.add_figure(tag, fig, global_step=self.current_epoch)
+        
+

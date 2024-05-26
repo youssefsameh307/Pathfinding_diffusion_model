@@ -44,7 +44,9 @@ class PathsDataset(Dataset):
         self.worlds_indx = paths.world_i32.values
         
         # get distance field images
-        self.world_distance_field_images = self.preprocess_world_images(self.all_world_images, self.worlds_indx,self.voxel_size)
+        self.world_distance_field_images = self.preprocess_world_images(self.all_world_images, self.worlds_indx,self.voxel_size) # (n_worlds, 64, 64)
+        # add channel dimension
+        self.world_distance_field_images = {k: v.unsqueeze(0) for k, v in self.world_distance_field_images.items()}
         # only keep the world images that are needed
         self.world_images = self.all_world_images[self.worlds_indx]
 

@@ -84,10 +84,10 @@ class ObstacleFreePathLoss(nn.Module):
         y1 = torch.clamp(y1, 0, grid_size_y - 1)
 
         # Get the values at the corners of the interpolation square
-        Ia = world_distance_field_img[:, x0, y0]
-        Ib = world_distance_field_img[:, x1, y0]
-        Ic = world_distance_field_img[:, x0, y1]
-        Id = world_distance_field_img[:, x1, y1]
+        Ia = world_distance_field_img[:, :,x0, y0]
+        Ib = world_distance_field_img[:, :,x1, y0]
+        Ic = world_distance_field_img[:, :,x0, y1]
+        Id = world_distance_field_img[:, :,x1, y1]
 
         # all values above min_safe_distance are safe and should be min_safe_distance
         Ia = torch.min(Ia, self.min_safe_distance)
