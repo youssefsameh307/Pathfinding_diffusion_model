@@ -106,8 +106,45 @@ class ObstacleFreePathLoss(nn.Module):
         sum_values = torch.mean(interpolated_values)
         return -sum_values
 
-import torch
-import torch.nn as nn
+class GraphBasedConsistencyLoss(nn.Module):
+    def __init__(self, variance_weight=1.0):
+        super(GraphBasedConsistencyLoss, self).__init__()
+        self.variance_weight = variance_weight
+    
+    def forward(self, paths):
+        """
+        Args:
+            paths (torch.Tensor): Tensor of shape (Batch, Waypoints, 2) where 2 is for (x, y) coordinates.
+        
+        Returns:
+            torch.Tensor: The graph-based consistency loss with variance penalty.
+        """
+        # Compute the differences between consecutive waypoints
+        differences = paths[:, 1:, :] - paths[:, :-1, :]
+        
+        # Compute the Euclidean distances for these differences
+        distances = torch.norm(differences, dim=-1)
+        
+        # Compute the mean distance
+        mean_distance = distances.mean(dim=-1, keepdim=True)
+        
+        # Compute the variance of the distances
+        variance = ((distances - mean_distance) ** 2).mean(dim=-1)
+        
+        # Sum the distances to get the consistency loss
+        consistency_loss = distances.sum(dim=-1).mean()
+        
+        # Compute the variance penalty
+        variance_penalty = variance.mean()
+        
+        # Total loss
+        # loss = consistency_loss + self.variance_weight * variance_penalty
+        loss = variance_penalty
+        
+        return loss
+
+
+
 
 class WeightedLoss(nn.Module):
     def __init__(self, losses, weights):
@@ -185,3 +222,15 @@ if __name__ == "__main__":
     # Backward pass
     loss.backward()
     print(f"Gradients: {predictions.grad}")
+
+    # Example paths tensor of shape (Batch, Waypoints, 2)
+    paths = torch.tensor([[[0.0, 0.0], [2.0, 2.0], [4.0, 4.0]],
+                          [[1.0, 3.0], [4.0, 4.0], [5.0, 5.0]]], dtype=torch.float32)
+    
+    # Initialize the loss function
+    loss_fn = GraphBasedConsistencyLoss()
+    
+    # Compute the loss
+    loss = loss_fn(paths)
+    
+    print("Graph-Based Consistency Loss:", loss.item())
