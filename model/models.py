@@ -62,30 +62,43 @@ class TemporalUnet(nn.Module):
             self.encoder = encoder
             self.encoder.to(device)
         
-        # initialize time embedding
-        time_dim = dim
+        self.emb_dim = dim
+        # Split each emb_dim into 4 parts
+        # half should go to cond emb. 
+        self.cond_emb_dim = dim // 2
+        # 1/8 should go to start pos emb
+        self.start_pos_emb_dim = dim // 8
+        # 1/8 should go to end pos emb
+        self.end_pos_emb_dim = dim // 8
+        # 1/4 should go to time emb
+        self.time_emb_dim = dim // 4
+        # if there is any extra dim give it to time 
+        self.time_emb_dim += dim - (self.cond_emb_dim + self.start_pos_emb_dim + self.end_pos_emb_dim + self.time_emb_dim)
+        
+        print(f'[ models/temporal ] Embedding dimensions: {self.cond_emb_dim}, {self.start_pos_emb_dim}, {self.end_pos_emb_dim}, {self.time_emb_dim}')
+        # initialize time embedding   
         self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(dim),
-            nn.Linear(dim, dim * 4),
+            SinusoidalPosEmb(self.time_emb_dim),
+            nn.Linear(self.time_emb_dim, self.time_emb_dim * 4),
             nn.Mish(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(self.time_emb_dim * 4, self.time_emb_dim),
         )
         
         
         # initialize embedding start pos
         self.start_pos_mlp = nn.Sequential(
-            SinusoidalPosEmbedding2D(dim),
-            nn.Linear(dim, dim * 4),
+            SinusoidalPosEmbedding2D(self.end_pos_emb_dim),
+            nn.Linear(self.end_pos_emb_dim, self.end_pos_emb_dim * 4),
             nn.Mish(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(self.end_pos_emb_dim * 4, self.end_pos_emb_dim),
         )
 
         # initalize embedding end pos
         self.end_pos_mlp = nn.Sequential(
-            SinusoidalPosEmbedding2D(dim),
-            nn.Linear(dim, dim * 4),
+            SinusoidalPosEmbedding2D(self.end_pos_emb_dim),
+            nn.Linear(self.end_pos_emb_dim, self.end_pos_emb_dim * 4),
             nn.Mish(),
-            nn.Linear(dim * 4, dim),
+            nn.Linear(self.end_pos_emb_dim * 4, self.end_pos_emb_dim),
         )
 
         self.downs = nn.ModuleList([])
@@ -98,8 +111,8 @@ class TemporalUnet(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(nn.ModuleList([
-                ResidualTemporalBlock(dim_in, dim_out, embed_dim=time_dim, horizon=horizon, device=device),
-                ResidualTemporalBlock(dim_out, dim_out, embed_dim=time_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_in, dim_out, embed_dim=self.emb_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_out, dim_out, embed_dim=self.emb_dim, horizon=horizon, device=device),
                 Residual(PreNorm(dim_out, LinearAttention(dim_out))) if attention else nn.Identity(),
                 Downsample1d(dim_out) if not is_last else nn.Identity()
             ]))
@@ -109,9 +122,9 @@ class TemporalUnet(nn.Module):
                 horizon_values.append(horizon)
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=self.emb_dim, horizon=horizon, device=device)
         self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim))) if attention else nn.Identity()
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=horizon, device=device)
+        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=self.emb_dim, horizon=horizon, device=device)
 
         out_in = reversed(in_out[1:])
         for ind, (dim_in, dim_out) in enumerate(out_in):
@@ -119,8 +132,8 @@ class TemporalUnet(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.ups.append(nn.ModuleList([
-                ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=time_dim, horizon=horizon, device=device),
-                ResidualTemporalBlock(dim_in, dim_in, embed_dim=time_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=self.emb_dim, horizon=horizon, device=device),
+                ResidualTemporalBlock(dim_in, dim_in, embed_dim=self.emb_dim, horizon=horizon, device=device),
                 Residual(PreNorm(dim_in, LinearAttention(dim_in))) if attention else nn.Identity(),
                 Upsample1d(dim_in) if not is_last else nn.Identity()
             ]))
@@ -145,23 +158,40 @@ class TemporalUnet(nn.Module):
 
         x = einops.rearrange(x, 'b h t -> b t h')
 
-        t = tim_emb = self.time_mlp(time)
-        # Add encoding of the environment to the time embedding
+        # t = tim_emb = self.time_mlp(time)
+        # # Add encoding of the environment to the time embedding
+        # if cond is not None:
+        #     emb = self.encoder(cond)
+        #     self.last_emb = emb
+        #     # Do this operation on the cpu 
+        #     # t = t.cpu()
+        #     # emb = emb.cpu()
+        #     t = torch.empty(tim_emb.shape, device=self.device)
+        #     t = torch.add(tim_emb, emb) # as doing tim_emb + emb will throw cuda error
+            
+        # if start_pos is not None:
+        #     emb = self.start_pos_mlp(start_pos)
+        #     t = torch.add(t, emb)
+        # if end_pos is not None:
+        #     emb = self.end_pos_mlp(end_pos)
+        #     t = torch.add(t, emb)
+        
+        # get each embedding then concatenate them
+        cond_emb = torch.empty((x.shape[0],  self.cond_emb_dim), device=self.device)
         if cond is not None:
             emb = self.encoder(cond)
             self.last_emb = emb
-            # Do this operation on the cpu 
-            # t = t.cpu()
-            # emb = emb.cpu()
-            t = torch.empty(tim_emb.shape, device=self.device)
-            t = torch.add(tim_emb, emb) # as doing tim_emb + emb will throw cuda error
-            
+            cond_emb = emb
+        start_pos_emb = torch.empty((x.shape[0],  self.start_pos_emb_dim), device=self.device)
         if start_pos is not None:
             emb = self.start_pos_mlp(start_pos)
-            t = torch.add(t, emb)
+            start_pos_emb = emb
+        end_pos_emb = torch.empty((x.shape[0], self.end_pos_emb_dim), device=self.device)
         if end_pos is not None:
             emb = self.end_pos_mlp(end_pos)
-            t = torch.add(t, emb)
+            end_pos_emb = emb
+        time_emb = self.time_mlp(time)
+        t = torch.cat((cond_emb, start_pos_emb, end_pos_emb, time_emb), dim=1) # [ batch x emb_dim ]
 
         h = []
 
