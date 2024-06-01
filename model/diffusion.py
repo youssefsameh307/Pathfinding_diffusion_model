@@ -8,7 +8,7 @@ import logging
 import numpy as np
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda"):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=3e-4, device="cuda"):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -26,7 +26,7 @@ class Diffusion():
         sqrt_alpha = torch.sqrt(self.alpha[t])[:, None, None]
         sqrt_one_minus_alpha = torch.sqrt(1 - self.alpha[t])[:, None, None]
         Ɛ = torch.randn_like(x)
-        return sqrt_alpha * x + sqrt_one_minus_alpha * Ɛ, Ɛ
+        return sqrt_alpha * x + sqrt_one_minus_alpha * Ɛ, Ɛ 
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,), device=self.device)
 
@@ -134,20 +134,9 @@ class Diffusion():
         return x, intermediate
 
     @torch.no_grad()
-    def sample_from_paths(self, model, n, paths, cond=None, cfg_scale=0,normalizer=None,save_rate=20, mu=0, sigma=1):
-        """sample with constraints. constraints is a dictionary with keys as timesteps and values as the constraints at that timestep. 
-        Sampling will reset the constraints at the given timesteps to the given values at each timestep. 
-
-        mu and sigma are choose like this as the word is from 0 to 10. and it is uniformaly distributed. 
-        Args:
-            model (torch.nn): torch model
-            paths torch.tensor: shape (n, waypoints, 2)
-            n (int): number of samples to generate
-            constraints (dict, optional): {timestamp: value}. Defaults to {}.
-            save_rate (int, optional): _description_. Defaults to 20.
-
-        Returns:
-            tuple: samples, intermediate diffusions
+    def sample_from_paths(self, model, n, paths, cond=None, cfg_scale=0,normalizer=None,save_rate=20, mu=0, sigma=0.1):
+        """sample with constraints. constraints is a dictionary with keys as timesteps and values as the constraints at that timestep.
+        
         """
         logging.info(f"Sampling {n} new images....")
         model.eval()
@@ -180,10 +169,11 @@ class Diffusion():
 
             if i > 1:
                 noise = torch.randn_like(x)
+                # noise = torch.zeros_like(x)
             else:
                 noise = torch.zeros_like(x)
 
-            x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
+            x = (1 / torch.sqrt(alpha))  * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
             # set constraints
             x[:, 0, :] = paths[:, 0]
             x[:, -1, :] = paths[:, -1]
@@ -194,6 +184,8 @@ class Diffusion():
         model.train()
         x = x.cpu().detach().numpy()
         return x, intermediate
+
+
 
 if __name__ == '__main__':
     pass

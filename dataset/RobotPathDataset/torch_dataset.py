@@ -54,11 +54,9 @@ class PathsDataset(Dataset):
         path_coordinates_og = sql2.object2numeric_array(paths.q_f32.values)
         path_coordinates_og = path_coordinates_og.reshape(-1, 20, n_dim) # reshape to (n_paths, n_waypoints, n_dim) = (n_total, 20, 2) because 20 is the default number of waypoints
         # map this path to n_waypoints
-        if n_waypoints != 20:
-            path_coordinates = self.preprocess_path_coordinates(path_coordinates_og) # (n_total, n_of_waypoints, 2)
-        else:
-            path_coordinates = path_coordinates_og
-
+        
+        path_coordinates = self.preprocess_path_coordinates(path_coordinates_og) # (n_total, n_of_waypoints, 2)
+        
         self.data = torch.tensor(path_coordinates, device=device) # torch tensor
         self.og_data = self.data.clone()
         if normalizer:
@@ -66,6 +64,11 @@ class PathsDataset(Dataset):
             normalizer.initialize([self.MIN_X_COORDINATE, self.MIN_Y_COORDINATE], [self.MAX_X_COORDINATE, self.MAX_Y_COORDINATE], device=device)
             self.normalizer = normalizer
             self.data = self.normalizer(self.data)
+
+        # Create relative_path_data
+        self.relative_path_data, self.straight_line_path_data = self.relative_paths(self.data)
+        self.relative_path_data, self.straight_line_path_data = torch.tensor(self.relative_path_data, device=device, dtype=torch.float32), torch.tensor(self.straight_line_path_data, device=device, dtype=torch.float32)
+        
 
         # dataset information 
         # Min value per coordinate (x, y)
@@ -86,6 +89,8 @@ class PathsDataset(Dataset):
             'world_indx': self.worlds_indx[idx],
             'world_img': self.world_images[idx],
             'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
+            'relative_path': self.relative_path_data[idx],
+            'straight_line_path': self.straight_line_path_data[idx],
         }
         return item
 
@@ -95,7 +100,8 @@ class PathsDataset(Dataset):
             'world_indx': self.worlds_indx[idx],
             'world_img': self.world_images[idx],
             'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
-
+            'relative_path': self.relative_path_data[idx],
+            'straight_line_path': self.straight_line_path_data[idx],
         }
         return item
     
@@ -103,6 +109,24 @@ class PathsDataset(Dataset):
         return img2dist_img(img=self.world_images[idx], voxel_size=voxel_size, add_boundary=False)
     
     ### Preprocessing functions ###
+    def relative_paths(self, paths:torch.Tensor):
+        """
+        This function computes the relative paths between the straignt line with n_waypoints and the offset of the path given.
+
+        Args:
+            paths (Tensor): The paths to compute relative paths for, with shape (batch, timesteps, features).
+
+        Returns:
+            Tensor: The relative paths, with shape (batch, timesteps, features).
+        """
+        paths = paths.detach().cpu().numpy()
+        # get the start and end point of the path
+        path_with_only_start_and_end = paths[:, [0, -1], :]
+        # get the straight line between the start and end point
+        straight_line = trajectory.get_path_adjusted(path_with_only_start_and_end, n=self.n_waypoints)
+        offset_paths = paths - straight_line
+        return offset_paths, straight_line
+
 
     def preprocess_world_images(self, world_images, world_indx,voxel_size):
         return self.transform_world_images_to_distance_field(world_images,world_indx, voxel_size)
