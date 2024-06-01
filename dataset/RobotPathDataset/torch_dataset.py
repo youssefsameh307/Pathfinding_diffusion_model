@@ -12,7 +12,7 @@ from .obstacle_distance import img2dist_img, img2grad
 
 
 class PathsDataset(Dataset):
-    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalizer=None):
+    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalizer=None, single_world_dataset=False):
         # CONSTANTS
         self.voxel = n_voxels = 64
         self.voxel_size = 10 / 64     # in m
@@ -39,7 +39,8 @@ class PathsDataset(Dataset):
         # Create indexes for the paths
         world_idx, path_idx = self.get_indecies(n_paths_per_world, n_worlds)
         # path_idx = np.random.choice(np.arange(self.MAX_WORLDS*n_worlds), size=n_worlds*n_paths_per_world, replace=False)
-        # path_idx = np.arange(1000)
+        if single_world_dataset:
+            path_idx = np.arange(n_paths_per_world)
         paths = sql2.get_values_sql(file=file, table='paths', rows=path_idx, values_only=False)
         self.worlds_indx = paths.world_i32.values
         

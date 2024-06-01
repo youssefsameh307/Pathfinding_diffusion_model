@@ -75,7 +75,7 @@ class TemporalUnet(nn.Module):
         # if there is any extra dim give it to time 
         self.time_emb_dim += dim - (self.cond_emb_dim + self.start_pos_emb_dim + self.end_pos_emb_dim + self.time_emb_dim)
         
-        print(f'[ models/temporal ] Embedding dimensions: {self.cond_emb_dim}, {self.start_pos_emb_dim}, {self.end_pos_emb_dim}, {self.time_emb_dim}')
+        print(f'[ models/temporal ] Embedding dimensions: env encoding {self.cond_emb_dim}, start_pos encoding {self.start_pos_emb_dim}, end_pos encoding {self.end_pos_emb_dim}, time encoding {self.time_emb_dim}')
         # initialize time embedding   
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(self.time_emb_dim),
@@ -99,6 +99,12 @@ class TemporalUnet(nn.Module):
             nn.Linear(self.end_pos_emb_dim, self.end_pos_emb_dim * 4),
             nn.Mish(),
             nn.Linear(self.end_pos_emb_dim * 4, self.end_pos_emb_dim),
+        )
+        
+        # initialize embedding mapper in case encoder is not same as emb_dim
+        self.encoder_mapper = nn.Sequential(
+            nn.Linear(64, self.cond_emb_dim), #!  TODO U have to retrain something else. 
+            nn.Mish(),
         )
 
         self.downs = nn.ModuleList([])
@@ -126,8 +132,8 @@ class TemporalUnet(nn.Module):
         self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim))) if attention else nn.Identity()
         self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=self.emb_dim, horizon=horizon, device=device)
 
-        out_in = reversed(in_out[1:])
-        for ind, (dim_in, dim_out) in enumerate(out_in):
+        out_in = list(reversed(in_out[1:]))
+        for ind, (dim_in, dim_out) in enumerate(list(out_in)):
             
             is_last = ind >= (num_resolutions - 1)
 
@@ -153,7 +159,7 @@ class TemporalUnet(nn.Module):
  
     def forward(self, x, time, cond=None, start_pos=None, end_pos=None):
         '''
-            x : [ batch x horizon x transition ]
+            x : [ batch x waypoints x state ]
         '''
 
         x = einops.rearrange(x, 'b h t -> b t h')
@@ -180,8 +186,11 @@ class TemporalUnet(nn.Module):
         cond_emb = torch.empty((x.shape[0],  self.cond_emb_dim), device=self.device)
         if cond is not None:
             emb = self.encoder(cond)
+            if emb.shape[1] != self.cond_emb_dim:
+                emb = self.encoder_mapper(emb)
             self.last_emb = emb
             cond_emb = emb
+            
         start_pos_emb = torch.empty((x.shape[0],  self.start_pos_emb_dim), device=self.device)
         if start_pos is not None:
             emb = self.start_pos_mlp(start_pos)
