@@ -65,9 +65,9 @@ class PathsDataset(Dataset):
             self.normalizer = normalizer
             self.data = self.normalizer(self.data)
 
-        # Create relative_path_data
-        self.relative_path_data, self.straight_line_path_data = self.relative_paths(self.data)
-        self.relative_path_data, self.straight_line_path_data = torch.tensor(self.relative_path_data, device=device, dtype=torch.float32), torch.tensor(self.straight_line_path_data, device=device, dtype=torch.float32)
+        # Create offset_path_data
+        self.offset_path_data, self.straight_line_path_data = self.offset_paths(self.data)
+        self.offset_path_data, self.straight_line_path_data = torch.tensor(self.offset_path_data, device=device, dtype=torch.float32), torch.tensor(self.straight_line_path_data, device=device, dtype=torch.float32)
         
 
         # dataset information 
@@ -89,7 +89,7 @@ class PathsDataset(Dataset):
             'world_indx': self.worlds_indx[idx],
             'world_img': self.world_images[idx],
             'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
-            'relative_path': self.relative_path_data[idx],
+            'offset_path': self.offset_path_data[idx],
             'straight_line_path': self.straight_line_path_data[idx],
         }
         return item
@@ -100,7 +100,7 @@ class PathsDataset(Dataset):
             'world_indx': self.worlds_indx[idx],
             'world_img': self.world_images[idx],
             'world_distance_field_img': self.world_distance_field_images[self.worlds_indx[idx]],
-            'relative_path': self.relative_path_data[idx],
+            'offset_path': self.offset_path_data[idx],
             'straight_line_path': self.straight_line_path_data[idx],
         }
         return item
@@ -109,7 +109,7 @@ class PathsDataset(Dataset):
         return img2dist_img(img=self.world_images[idx], voxel_size=voxel_size, add_boundary=False)
     
     ### Preprocessing functions ###
-    def relative_paths(self, paths:torch.Tensor):
+    def offset_paths(self, paths:torch.Tensor):
         """
         This function computes the relative paths between the straignt line with n_waypoints and the offset of the path given.
 
@@ -147,7 +147,6 @@ class PathsDataset(Dataset):
         world_distance_field_images = {}
         for indx in np.unique(world_indx):
             world_distance_field_images[indx] = torch.tensor(img2dist_img(img=world_images[indx], voxel_size=voxel_size, add_boundary=True), dtype=torch.float32)
-            print(f'world_indx: {indx}, world_distance_field_images: {world_distance_field_images[indx].shape}')
         return world_distance_field_images
         
         
