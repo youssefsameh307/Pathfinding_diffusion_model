@@ -121,7 +121,7 @@ class Diffusion():
 
 
     @torch.no_grad()
-    def sample_with_constraints(self, model, n, constraints={}, cond=None, cfg_scale=3,normalizer=None,save_rate=20, mu=0, sigma=1):
+    def sample_with_constraints(self, model, n, constraints={}, cond=None, cfg_scale=0,normalizer=None,save_rate=20, mu=0, sigma=1):
         """sample with constraints. constraints is a dictionary with keys as timesteps and values as the constraints at that timestep. 
         Sampling will reset the constraints at the given timesteps to the given values at each timestep. 
 
@@ -157,7 +157,7 @@ class Diffusion():
             t = (torch.ones(n) * i).long().to(self.device)
 
             predicted_noise = model(x, t, cond)
-            if cfg_scale:
+            if cfg_scale > 0:
                 uncondditional_predicted_noise = model(x, t, cond=None)
                 predicted_noise = torch.lerp(uncondditional_predicted_noise, predicted_noise, cfg_scale)
             alpha = self.alpha[t][:, None, None]
@@ -226,6 +226,65 @@ class Diffusion():
             # set constraints
             x[:, 0, :] = paths[:, 0]
             x[:, -1, :] = paths[:, -1]
+            # save intermediate images
+            if i % save_rate ==0 or i==self.noise_steps or i<8:
+                intermediate.append(x.detach().cpu().numpy())
+        intermediate = np.stack(intermediate)
+        model.train()
+        x = x.cpu().detach().numpy()
+        return x, intermediate
+    @torch.no_grad()
+    def sample_from_paths_with_constraints(self, model, n, paths, constraints,cond=None, cfg_scale=0,normalizer=None,save_rate=20, mu=0, sigma=0.1):
+        """sample with constraints. constraints is a dictionary with keys as timesteps and values as the constraints at that timestep.
+        
+        """
+        logging.info(f"Sampling {n} new images....")
+        model.eval()
+        if cond is not None:
+            cond = cond.to(self.device)
+            
+        if normalizer is not None:
+            for t, value in constraints.items():
+                constraints[t] = normalizer(value)
+
+        # sample from the paths by setting start and end points as start and end of the path
+        
+
+        x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
+        # set constraints
+        start_pos = x[:, 0, :] = paths[:, 0]
+        end_pos = x[:, -1, :] = paths[:, -1]
+        for t, value in constraints.items():
+            x[:, t, :] = value
+
+        # array to keep track of generated steps for plotting
+        intermediate = [] 
+        for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
+
+            t = (torch.ones(n) * i).long().to(self.device)
+
+            predicted_noise = model(x, t, cond, start_pos, end_pos)
+            if cfg_scale > 0:
+                uncondditional_predicted_noise = model(x, t, cond=None)
+                predicted_noise = torch.lerp(uncondditional_predicted_noise, predicted_noise, cfg_scale)
+            alpha = self.alpha[t][:, None, None]
+
+            alpha_hat = self.alpha_hat[t][:, None, None]
+
+            beta = self.beta[t][:, None, None]
+
+            if i > 1:
+                noise = torch.randn_like(x)
+                # noise = torch.zeros_like(x)
+            else:
+                noise = torch.zeros_like(x)
+
+            x = (1 / torch.sqrt(alpha))  * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
+            # set constraints
+            x[:, 0, :] = paths[:, 0]
+            x[:, -1, :] = paths[:, -1]
+            for t, value in constraints.items():
+                x[:, t, :] = value
             # save intermediate images
             if i % save_rate ==0 or i==self.noise_steps or i<8:
                 intermediate.append(x.detach().cpu().numpy())

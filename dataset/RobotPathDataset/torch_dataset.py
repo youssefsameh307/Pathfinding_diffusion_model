@@ -93,6 +93,11 @@ class PathsDataset(Dataset):
             'straight_line_path': self.straight_line_path_data[idx],
         }
         return item
+    
+    def get_samples(self, n_samples):
+        idx = np.random.choice(np.arange(len(self)), size=n_samples, replace=False)
+        samples = [self[i] for i in idx]
+        return samples
 
     def get_og_item(self, idx):
         item = {

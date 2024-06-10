@@ -11,9 +11,9 @@ def plot_diffusions(intermediates, world_imgs=None, normalizer=None, max_plots=8
     if intermediates.shape[0] > max_plots:
         intermediates = intermediates[:max_plots]
         true_paths = true_paths[:max_plots]
-    if normalizer:
+    if normalizer and true_paths is not None:
         true_paths = normalizer.denormalize(true_paths)
-    number_of_samples = intermediates.shape[0]
+    number_of_samples = intermediates.shape[0] if intermediates.shape[0] > 1 else 2
     number_of_steps = intermediates.shape[1]
     fig , ax = plt.subplots(number_of_samples,number_of_steps, figsize=(20,20))
     for i, sample in enumerate(intermediates):
