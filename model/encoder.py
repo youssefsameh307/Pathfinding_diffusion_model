@@ -7,6 +7,18 @@ class Encoder(nn.Module):
     def forward(self, x):
         raise NotImplementedError("This method should be overridden by child class")
 
+class VAEEncoder(Encoder):
+    def __init__(self, vae_model):
+        super(VAEEncoder, self).__init__()
+        self.vae_model = vae_model
+    def forward(self, x):
+        results = self.vae_model.encode(x)
+        mu, log_var = results
+        z = self.vae_model.reparameterize(mu, log_var)
+        return z
+
+    def decode(self, z):
+        return self.vae_model.decode(z)
 class WorldIndexEmbeder(Encoder):
     """
     A class representing a world index embedder.

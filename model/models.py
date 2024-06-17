@@ -154,9 +154,6 @@ class TemporalUnet(nn.Module):
         
         self.to(device)
 
-
-
- 
     def forward(self, x, time, cond=None, start_pos=None, end_pos=None):
         '''
             x : [ batch x waypoints x state ]
