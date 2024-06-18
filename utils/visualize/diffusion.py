@@ -1,25 +1,29 @@
 from matplotlib import pyplot as plt
 import numpy as np
+import torch
 
 def plot_diffusions(intermediates, world_imgs=None, normalizer=None, max_plots=8, true_paths=None):
     # choose 5 intermediates equally spaced with the last one being at the end indexand 
     intermediates_indx_to_draw = [0, len(intermediates) //4 ,len(intermediates)//2, (3* len(intermediates) ) // 4,len(intermediates)-1]
     if normalizer:
-        intermediates = normalizer.denormalize(intermediates, is_numpy=True)
+        intermediates = normalizer.denormalize(intermediates, is_numpy=False)
     intermediates = intermediates[intermediates_indx_to_draw]
-    intermediates = intermediates.transpose(1,0,2,3)
+    intermediates = intermediates.permute(1,0,2,3)
     if intermediates.shape[0] > max_plots:
         intermediates = intermediates[:max_plots]
         true_paths = true_paths[:max_plots]
     if normalizer and true_paths is not None:
-        true_paths = normalizer.denormalize(true_paths)
+        true_paths = normalizer.denormalize(true_paths, is_numpy=False)
     number_of_samples = intermediates.shape[0] if intermediates.shape[0] > 1 else 2
     number_of_steps = intermediates.shape[1]
     fig , ax = plt.subplots(number_of_samples,number_of_steps, figsize=(20,20))
     for i, sample in enumerate(intermediates):
         for j, step in enumerate(sample): 
+            step = step.cpu().detach().numpy()
             ax[i, j].plot(step[:, 0], step[:, 1], 'o-', label='l', color='red')
             if world_imgs is not None:
+                if isinstance(world_imgs, torch.Tensor):
+                    world_imgs = world_imgs.cpu().detach().numpy()
                 ax[i, j].imshow(world_imgs[i].T, extent=[0, 10, 0, 10], origin='lower', cmap='binary')
             if true_paths is not None:
                 true_path = true_paths[i].cpu().detach().numpy()

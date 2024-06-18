@@ -80,7 +80,7 @@ class Diffusion():
         return torch.randint(low=1, high=self.noise_steps, size=(n,), device=self.device)
 
     @torch.no_grad()
-    def sample(self, model,n, cfg_scale=3,save_rate=20, cond=None,mu=0, sigma=1):
+    def sample(self, model,n, cfg_scale=0,save_rate=20, cond=None,mu=0, sigma=1):
         logging.info(f"Sampling {n} new images....")
         model.eval()
         x = mu + sigma *  torch.randn((n, *self.input_shape)).to(self.device)
@@ -113,10 +113,9 @@ class Diffusion():
         
             # save intermediate images
             if i % save_rate ==0 or i==self.noise_steps or i<8:
-                intermediate.append(x.detach().cpu().numpy())
-        intermediate = np.stack(intermediate)
-        model.train()
-        x = x.cpu().numpy()
+                intermediate.append(x)
+        intermediate = torch.stack(intermediate)
+        x = x
         return x, intermediate
 
 
