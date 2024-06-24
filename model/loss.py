@@ -1,5 +1,6 @@
 import torch
-import torch.nn as nn
+from torch import nn
+from wzk import sql2, trajectory
 
 # torch create custom loss function
 class ObstacleFreePathLoss(nn.Module):
@@ -16,7 +17,7 @@ class ObstacleFreePathLoss(nn.Module):
         min_safe_distance (float): The minimum safe distance to consider (default: 0.05).
         device (str): The device to run the computation on (default: 'cuda').
     """
-    def __init__(self, normalizer=None, min_safe_distance=0.05, device='cuda'):
+    def __init__(self, normalizer=None, min_safe_distance=0.1, device='cuda'):
         super(ObstacleFreePathLoss, self).__init__()
         self.device = device    
         self.min_safe_distance = torch.tensor(min_safe_distance, device=device)
@@ -42,8 +43,36 @@ class ObstacleFreePathLoss(nn.Module):
         grid_coords = torch.clamp(world_coords * scale, 0, grid_size - 1)
 
         return grid_coords
+    
+    @staticmethod
+    def interpolate_waypoints_torch(waypoints):
+        # waypoints (batch, n_waypoints, 2)
+        # Convert the list of waypoints to a PyTorch tensor if it's not already one
+        if not isinstance(waypoints, torch.Tensor):
+            waypoints = torch.tensor(waypoints, dtype=torch.float32)
         
-    def forward(self, path, world_distance_field_img):
+        # Extract x and y coordinates
+        x = waypoints[:, :, 0]
+        y = waypoints[:, :, 1]
+        
+        # Calculate midpoints
+        x_mid = (x[:, 1:] + x[:, :-1]) / 2
+        y_mid = (y[:, 1:] + y[:, :-1]) / 2
+        
+        # Create midpoints tensor
+        midpoints = torch.stack([x_mid, y_mid], dim=2)
+        
+        # Create an empty tensor to store the interleaved result
+        new_waypoints = torch.empty((waypoints.shape[0], waypoints.shape[1] + midpoints.shape[1], 2), dtype=waypoints.dtype, device=waypoints.device)
+        
+        # Interleave original waypoints and midpoints
+        new_waypoints[:, ::2] = waypoints
+        new_waypoints[:, 1::2] = midpoints
+        
+        return new_waypoints
+
+        
+    def forward(self, path, world_distance_field_img, interpoloate_waypoints=True):
         """
         Compute the loss for an obstacle-free path.
 
@@ -59,7 +88,11 @@ class ObstacleFreePathLoss(nn.Module):
         # 1st interpolate the values of the distance field at the points of the path
         assert path.shape[2] == 2
         batch_size = path.shape[0]
-        
+        number_of_waypoints = path.shape[1]
+
+        # double the number of waypoints in the path. 
+        if interpoloate_waypoints:
+            path = self.interpolate_waypoints_torch(path)
         grid_size_x = world_distance_field_img.shape[1] 
         grid_size_y = world_distance_field_img.shape[2]
         
