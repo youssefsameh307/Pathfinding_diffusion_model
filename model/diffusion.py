@@ -8,13 +8,14 @@ import logging
 import numpy as np
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=3e-4, device="cuda"):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=3e-4, scheduler_type='liner' ,device="cuda"):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
+        assert self.beta_start < self.beta_end, "beta_start should be less than beta_end"
         self.input_shape = input_shape
         self.device = device
-        self.beta = self.prepare_noise_schedule().to(device)
+        self.beta = self.prepare_noise_schedule(scheduler_type=scheduler_type).to(device)
         self.alpha = 1. - self.beta
         self.alpha_hat = torch.cumprod(self.alpha, dim=0)
         self.device = device
@@ -23,12 +24,13 @@ class Diffusion():
         if scheduler_type=='liner':
             return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
         if scheduler_type=='cosine':
-            return self.betas_for_alpha_bar(self.noise_steps, max_beta=0.999, alpha_transform_type="cosine")
+            return self.betas_for_alpha_bar(self.noise_steps, max_beta=self.beta_end, min_beta=self.beta_start,alpha_transform_type="cosine")
             
     
     def betas_for_alpha_bar(
         self,
         num_diffusion_timesteps,
+        min_beta=0.008,
         max_beta=0.999,
         alpha_transform_type="cosine",
     ):
@@ -53,7 +55,7 @@ class Diffusion():
         if alpha_transform_type == "cosine":
 
             def alpha_bar_fn(t):
-                return np.cos((t + 0.008) / 1.008 * np.pi / 2) ** 2
+                return np.cos((t + min_beta) / (1 + min_beta) * np.pi / 2) ** 2
 
         elif alpha_transform_type == "exp":
 
@@ -72,12 +74,15 @@ class Diffusion():
 
 
     def noise_input(self, x, t):
+        
         sqrt_alpha = torch.sqrt(self.alpha[t])[:, None, None]
         sqrt_one_minus_alpha = torch.sqrt(1 - self.alpha[t])[:, None, None]
         Ɛ = torch.randn_like(x)
         return sqrt_alpha * x + sqrt_one_minus_alpha * Ɛ, Ɛ 
-    def sample_timesteps(self, n):
-        return torch.randint(low=1, high=self.noise_steps, size=(n,), device=self.device)
+    def sample_timesteps(self, batch_size):
+        if batch_size==1:
+            return torch.randint(low=1, high=self.noise_steps, size=(1,), device=self.device)
+        return torch.randint(low=1, high=self.noise_steps, size=(batch_size,), device=self.device)
 
     @torch.no_grad()
     def sample(self, model,n, cfg_scale=0,save_rate=20, cond=None,mu=0, sigma=1):
@@ -118,6 +123,41 @@ class Diffusion():
         x = x
         return x, intermediate
 
+    torch.no_grad()
+    def sample_inpainting(self, model, n, constraints, save_rate=20, cond=None, mu=0, sigma=1):
+        logging.info(f"Sampling {n} new images....")
+        x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
+        if cond is not None:
+            cond = cond.to(self.device)
+        for t, value in constraints.items():
+            x[:, t, :] = value
+        # array to keep track of generated steps for plotting
+        intermediate = [] 
+        for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
+
+            t = (torch.ones(n) * i).long().to(self.device)
+
+            predicted_noise = model(x, t, cond)
+            alpha = self.alpha[t][:, None, None]
+
+            alpha_hat = self.alpha_hat[t][:, None, None]
+
+            beta = self.beta[t][:, None, None]
+
+            if i > 1:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+
+            x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
+            for t, value in constraints.items():
+                x[:, t, :] = value
+            # save intermediate images
+            if i % save_rate ==0 or i==self.noise_steps or i<8:
+                intermediate.append(x)
+        intermediate = torch.stack(intermediate)
+        x = x
+        return x, intermediate
 
     @torch.no_grad()
     def sample_with_constraints(self, model, n, constraints={}, cond=None, cfg_scale=0,normalizer=None,save_rate=20, mu=0, sigma=1):
