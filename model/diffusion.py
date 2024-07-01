@@ -8,7 +8,7 @@ import logging
 import numpy as np
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=3e-4, scheduler_type='liner' ,device="cuda"):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=3e-4, scheduler_type='linear' ,device="cuda"):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -20,8 +20,8 @@ class Diffusion():
         self.alpha_hat = torch.cumprod(self.alpha, dim=0)
         self.device = device
 
-    def prepare_noise_schedule(self, scheduler_type='liner'):
-        if scheduler_type=='liner':
+    def prepare_noise_schedule(self, scheduler_type='linear'):
+        if scheduler_type=='linear':
             return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
         if scheduler_type=='cosine':
             return self.betas_for_alpha_bar(self.noise_steps, max_beta=self.beta_end, min_beta=self.beta_start,alpha_transform_type="cosine")
@@ -30,7 +30,7 @@ class Diffusion():
     def betas_for_alpha_bar(
         self,
         num_diffusion_timesteps,
-        min_beta=0.008,
+        min_beta=0.008, # also known as S in the paper
         max_beta=0.999,
         alpha_transform_type="cosine",
     ):
@@ -55,7 +55,7 @@ class Diffusion():
         if alpha_transform_type == "cosine":
 
             def alpha_bar_fn(t):
-                return np.cos((t + min_beta) / (1 + min_beta) * np.pi / 2) ** 2
+                return np.cos(( (t/self.noise_steps) + min_beta) / (1 + min_beta) * np.pi / 2) ** 2
 
         elif alpha_transform_type == "exp":
 
@@ -79,6 +79,12 @@ class Diffusion():
         sqrt_one_minus_alpha = torch.sqrt(1 - self.alpha[t])[:, None, None]
         Ɛ = torch.randn_like(x)
         return sqrt_alpha * x + sqrt_one_minus_alpha * Ɛ, Ɛ 
+    
+    def denoise_input(self, x, t, noise):
+        alpha = self.alpha[t][:, None, None]
+        alpha_hat = self.alpha_hat[t][:, None, None]
+        return 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * noise)
+    
     def sample_timesteps(self, batch_size):
         if batch_size==1:
             return torch.randint(low=1, high=self.noise_steps, size=(1,), device=self.device)
