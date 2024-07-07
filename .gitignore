@@ -133,7 +133,7 @@ dmypy.json
 # logs
 logs/
 lightning_logs/
-
+vae/
 # all model.pth
 *.pth
 
