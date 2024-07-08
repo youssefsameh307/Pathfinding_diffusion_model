@@ -4,11 +4,14 @@ from einops.layers.torch import Rearrange
 import pdb
 from .model_blocks import SinusoidalPosEmb, Downsample1d, Upsample1d, Conv1dBlock, Residual, PreNorm, LinearAttention, SinusoidalPosEmbedding2D
 import torch
+def modulate(x, shift, scale):
+    return x * (1 + scale) + shift
+
 class ResidualTemporalBlock(nn.Module):
 
-    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5, device='cuda'):
+    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5, adaIN=True,device='cuda'):
         super().__init__()
-
+        self.adaIN = adaIN
         self.blocks = nn.ModuleList([
             Conv1dBlock(inp_channels, out_channels, kernel_size, device=device),
             Conv1dBlock(out_channels, out_channels, kernel_size, device=device),
@@ -19,6 +22,11 @@ class ResidualTemporalBlock(nn.Module):
             nn.Linear(embed_dim, out_channels, device=device),
             Rearrange('batch t -> batch t 1')
         )
+        if self.adaIN:
+            self.adaLN_modulation = nn.Sequential( # predicts for each channel 3 modulation parameters mean, scale, gate
+                nn.SiLU(),
+                nn.Linear(embed_dim, 3 * embed_dim, bias=True)
+            )
 
         self.residual_conv = nn.Conv1d(inp_channels, out_channels, 1, device=device) \
             if inp_channels != out_channels else nn.Identity(device=device)
@@ -32,10 +40,13 @@ class ResidualTemporalBlock(nn.Module):
             returns:
             out : [ batch_size x out_channels x horizon ]
         '''
+        if self.adaIN:
+            modulation_values = self.adaLN_modulation(t) # (batch, 3*d_model)
+            shift_msa, scale_msa, gate_msa = modulation_values.chunk(3, dim=1) # ()
+            t = modulate(t, shift_msa, scale_msa)
         out = self.blocks[0](x) + self.time_mlp(t)
         out = self.blocks[1](out)
         return out + self.residual_conv(x)
-
 
 class TemporalUnet(nn.Module):
 

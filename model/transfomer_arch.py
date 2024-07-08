@@ -43,7 +43,7 @@ class TransformerEncoderadaLNLayer(nn.Module):
         # cond shape is (batch, d_model)
         modulation_values = self.adaLN_modulation(cond) # (batch, 3*d_model)
         shift_msa, scale_msa, gate_msa = modulation_values.chunk(3, dim=1) # ()
-        modulated = modulate(x, shift_msa, scale_msa)
+        modulated = modulate(x, shift_msa, scale_msa) # TODO ! This could be wrong. maybe we modulate the condition instead of the input then add it as the 1st token
         x = self.layer(modulated)
         gated = gate_msa.unsqueeze(1) * x
         return gated
