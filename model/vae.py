@@ -5,7 +5,7 @@ from torch import optim
 from torch.nn import functional as F
 from torch import nn
 import matplotlib.pyplot as plt
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from abc import abstractmethod
 
 class BaseVAE(nn.Module):

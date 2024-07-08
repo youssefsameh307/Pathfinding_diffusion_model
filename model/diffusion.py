@@ -6,9 +6,11 @@ from tqdm import tqdm
 from torch import optim
 import logging
 import numpy as np
+import sched
+from google.cloud.aiplatform.constants import schedule
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda"):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda", scheduler_type=None):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -64,10 +66,9 @@ class Diffusion():
         
             # save intermediate images
             if i % save_rate ==0 or i==self.noise_steps or i<8:
-                intermediate.append(x.detach().cpu().numpy())
-        intermediate = np.stack(intermediate)
-        model.train()
-        x = x.cpu().numpy()
+                intermediate.append(x)
+        intermediate = torch.stack(intermediate)
+        x = x
         return x, intermediate
 
 
@@ -127,10 +128,9 @@ class Diffusion():
                 x[:, t, :] = value
             # save intermediate images
             if i % save_rate ==0 or i==self.noise_steps or i<8:
-                intermediate.append(x.detach().cpu().numpy())
-        intermediate = np.stack(intermediate)
-        model.train()
-        x = x.cpu().detach().numpy()
+                intermediate.append(x)
+        intermediate = torch.stack(intermediate)
+        x = x
         return x, intermediate
 
     @torch.no_grad()
@@ -189,10 +189,9 @@ class Diffusion():
             x[:, -1, :] = paths[:, -1]
             # save intermediate images
             if i % save_rate ==0 or i==self.noise_steps or i<8:
-                intermediate.append(x.detach().cpu().numpy())
-        intermediate = np.stack(intermediate)
-        model.train()
-        x = x.cpu().detach().numpy()
+                intermediate.append(x)
+        intermediate = torch.stack(intermediate)
+        x = x
         return x, intermediate
 
 if __name__ == '__main__':

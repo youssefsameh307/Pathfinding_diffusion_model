@@ -152,6 +152,7 @@ class TemporalUnet(nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
         
+        self.cache = {}
         self.to(device)
 
 
@@ -183,7 +184,7 @@ class TemporalUnet(nn.Module):
         #     t = torch.add(t, emb)
         
         # get each embedding then concatenate them
-        cond_emb = torch.empty((x.shape[0],  self.cond_emb_dim), device=self.device)
+        cond_emb = torch.empty((x.shape[0], self.cond_emb_dim), device=x.device)
         if cond is not None:
             emb = self.encoder(cond)
             if emb.shape[1] != self.cond_emb_dim:
@@ -191,11 +192,11 @@ class TemporalUnet(nn.Module):
             self.last_emb = emb
             cond_emb = emb
             
-        start_pos_emb = torch.empty((x.shape[0],  self.start_pos_emb_dim), device=self.device)
+        start_pos_emb = torch.empty((x.shape[0], self.start_pos_emb_dim), device=x.device)
         if start_pos is not None:
             emb = self.start_pos_mlp(start_pos)
             start_pos_emb = emb
-        end_pos_emb = torch.empty((x.shape[0], self.end_pos_emb_dim), device=self.device)
+        end_pos_emb = torch.empty((x.shape[0], self.end_pos_emb_dim), device=x.device)
         if end_pos is not None:
             emb = self.end_pos_mlp(end_pos)
             end_pos_emb = emb

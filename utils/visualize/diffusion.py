@@ -5,9 +5,9 @@ def plot_diffusions(intermediates, world_imgs=None, normalizer=None, max_plots=8
     # choose 5 intermediates equally spaced with the last one being at the end indexand 
     intermediates_indx_to_draw = [0, len(intermediates) //4 ,len(intermediates)//2, (3* len(intermediates) ) // 4,len(intermediates)-1]
     if normalizer:
-        intermediates = normalizer.denormalize(intermediates, is_numpy=True)
+        intermediates = normalizer.denormalize(intermediates, is_numpy=False)
     intermediates = intermediates[intermediates_indx_to_draw]
-    intermediates = intermediates.transpose(1,0,2,3)
+    intermediates = intermediates.permute(1,0,2,3)
     if intermediates.shape[0] > max_plots:
         intermediates = intermediates[:max_plots]
         true_paths = true_paths[:max_plots]
@@ -16,11 +16,14 @@ def plot_diffusions(intermediates, world_imgs=None, normalizer=None, max_plots=8
     number_of_samples = intermediates.shape[0]
     number_of_steps = intermediates.shape[1]
     fig , ax = plt.subplots(number_of_samples,number_of_steps, figsize=(20,20))
+    ax = np.atleast_2d(ax)
+    intermediates = intermediates.cpu().detach().numpy()
     for i, sample in enumerate(intermediates):
         for j, step in enumerate(sample): 
             ax[i, j].plot(step[:, 0], step[:, 1], 'o-', label='l', color='red')
             if world_imgs is not None:
-                ax[i, j].imshow(world_imgs[i].T, extent=[0, 10, 0, 10], origin='lower', cmap='binary')
+                world_img = world_imgs[i].T.cpu().detach().numpy()
+                ax[i, j].imshow(world_img, extent=[0, 10, 0, 10], origin='lower', cmap='binary')
             if true_paths is not None:
                 true_path = true_paths[i].cpu().detach().numpy()
                 ax[i, j].plot(true_path[:, 0], true_path[:, 1], 'o-', label='l', color='green', alpha=0.5)
