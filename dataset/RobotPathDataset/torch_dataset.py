@@ -10,9 +10,10 @@ import matplotlib.pyplot as plt
 from .normalizer import MinMaxFeatureNormalizer
 from .obstacle_distance import img2dist_img, img2grad
 
-
+DB_ALL = 'data/SingleSphere02_all.db'
+DB_ONE_WORLD = 'data/SingleSphere02_one-world.db'
 class PathsDataset(Dataset):
-    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalizer=None, single_world_dataset=False):
+    def __init__(self, file, n_waypoints=20, n_dim=2, n_paths_per_world=1000, n_worlds=1, device='cuda', normalizer=None, single_world_dataset=False, entire_dataset=False, fraction_of_data=0.05):
         # CONSTANTS
         self.voxel = n_voxels = 64
         self.voxel_size = 10 / 64     # in m
@@ -42,14 +43,19 @@ class PathsDataset(Dataset):
         if single_world_dataset:
             path_idx = np.arange(n_paths_per_world)
         paths = sql2.get_values_sql(file=file, table='paths', rows=path_idx, values_only=False)
+        if entire_dataset:
+            paths = sql2.get_values_sql(file=file, table='paths', values_only=False)
+            # get 10% of the paths
+            paths = paths.sample(frac=fraction_of_data)
         self.worlds_indx = paths.world_i32.values
         
         # get distance field images
         self.world_distance_field_images = self.preprocess_world_images(self.all_world_images, self.worlds_indx,self.voxel_size) # (n_worlds, 64, 64)
         # add channel dimension
         self.world_distance_field_images = {k: v.unsqueeze(0) for k, v in self.world_distance_field_images.items()}
-        # only keep the world images that are needed
+
         self.world_images = self.all_world_images[self.worlds_indx]
+        
 
         path_coordinates_og = sql2.object2numeric_array(paths.q_f32.values)
         path_coordinates_og = path_coordinates_og.reshape(-1, 20, n_dim) # reshape to (n_paths, n_waypoints, n_dim) = (n_total, 20, 2) because 20 is the default number of waypoints

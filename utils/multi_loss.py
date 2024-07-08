@@ -28,5 +28,22 @@ def ema_losses(loss1, loss2, step, x, alpha=0.99):
         # Blend the losses gradually
         ema_factor = alpha ** (step / x)
         return ema_factor * loss1 + (1 - ema_factor) * (loss2)
+    
+        # alpha = 0.99
+        # step = 1500
+        # x = 2000
+        # ema_factor = 0.99 ** (1500 / 2000) = 0.817
+        # loss = 0.817 * loss1 + 0.183 * loss2
+
+        # step = 1999
+        # x = 2000
+        # ema_factor = 0.99 ** (1999 / 2000) = 0.99
+        # loss = 0.99 * loss1 + 0.01 * loss2
+
+        # step = 2000
+        # x = 2000
+        # ema_factor = 0.99 ** (2000 / 2000) = 1.0
+        # loss = loss2
+        
 
 

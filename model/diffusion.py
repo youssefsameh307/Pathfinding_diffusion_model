@@ -150,12 +150,12 @@ class Diffusion():
             tuple: samples, intermediate diffusions
         """
         logging.info(f"Sampling {n} new images....")
-        model.eval()
         if cond is not None:
             cond = cond.to(self.device)
 
         # sample from the paths by setting start and end points as start and end of the path
         
+
 
         x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
         # set constraints

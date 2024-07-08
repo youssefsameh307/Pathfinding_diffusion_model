@@ -174,11 +174,7 @@ class PathDiffusionModel(L.LightningModule):
     def configure_optimizers(self):
         optimizer = self.config['optimizer'](self.parameters(), **self.config['optimizer_kwargs'])
         scheduler = self.config['scheduler'](optimizer, **self.config['scheduler_kwargs'])
-        return {
-            'optimizer': optimizer,
-           'scheduler': scheduler,
-           'monitor': 'train_loss',
-       }
+        return [optimizer], [scheduler]
     
     def validation_step(self, batch, batch_idx):
         ################################################
@@ -230,10 +226,12 @@ class PathDiffusionModel(L.LightningModule):
         # start position encoding
         start_end_encoding = self.start_end_encoder(start_and_end_pos)
         # fuse the conditionings world encoding + start encoding + end encoding
-        # cond = world_encoding + start_end_encoding[:, 0, :] + start_end_encoding[:, 1, :]
-        cond = world_encoding
+        if self.config['model_type'] == 'transfomer':
+            cond = world_encoding + start_end_encoding[:, 0,:] + start_end_encoding[:, 1,:]
+        elif self.config['model_type'] == 'u_net':
+            cond = world_cond
         # diffuse entire path
-        samples_offset, intermediates_offset = self.diffusion.sample(self.model, n=x_path.shape[0], cond=cond)
+        samples_offset, intermediates_offset = self.diffusion.sample_from_paths(self.model, n=x.shape[0], paths=x, cond=cond, normalizer=self.config['normalizer'])
         intermediates_for_same_point = torch.stack([encoded_path_to_real_path(encoded_path=intermediate_offset, straight_path=x_straigh_path, path_type=self.path_type, start=start_pos, end=end_pos) for intermediate_offset in intermediates_offset])
         samples_for_same_point = encoded_path_to_real_path(encoded_path=samples_offset, straight_path=x_straigh_path, path_type=self.path_type, start=start_pos, end=end_pos)
 
@@ -264,11 +262,11 @@ class PathDiffusionModel(L.LightningModule):
             'x_world_img_distance_field': x_world_img_distance_field,
             'x_offset_path': x_offset_path,
             # ## 
-            # 'samples_for_same_point':samples_for_same_point,
-            # 'intermediates_for_same_point':intermediates_for_same_point,
-            # 'x_path_for_same_point':x_path[indx].unsqueeze(0).expand(batch_size, -1, -1),
-            # 'x_world_img_for_same_point':x_world_img[indx].unsqueeze(0).expand(batch_size, -1, -1),
-            # 'x_offset_path_for_same_point':x_offset_path[indx].unsqueeze(0).expand(batch_size, -1, -1),
+            'samples_for_same_point':samples_for_same_point,
+            'intermediates_for_same_point':intermediates_for_same_point,
+            'x_path_for_same_point':x_path[indx].unsqueeze(0).expand(batch_size, -1, -1),
+            'x_world_img_for_same_point':x_world_img[indx].unsqueeze(0).expand(batch_size, -1, -1),
+            'x_offset_path_for_same_point':x_offset_path[indx].unsqueeze(0).expand(batch_size, -1, -1),
             # ###
             # 'samples_inpainting': samples_inpainting,
             # 'intermediates_inpainting': intermediates_inpainting,
