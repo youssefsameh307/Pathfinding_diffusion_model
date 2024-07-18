@@ -114,7 +114,7 @@ class TemporalUnet(nn.Module):
         
         # initialize embedding mapper in case encoder is not same as emb_dim
         self.encoder_mapper = nn.Sequential(
-            nn.Linear(64, self.cond_emb_dim), #!  TODO U have to retrain something else. 
+            nn.Linear(dim, self.cond_emb_dim), #!  TODO U have to retrain something else. 
             nn.Mish(),
         )
 

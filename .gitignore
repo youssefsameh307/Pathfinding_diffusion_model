@@ -136,5 +136,8 @@ lightning_logs/
 vae/
 # all model.pth
 *.pth
+# all model.ckpt
+*.ckpt
 
 data/
+
