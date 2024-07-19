@@ -62,9 +62,11 @@ class MinMaxFeatureNormalizer:
        
         if is_numpy:
             x = torch.tensor(x).to(self.device)
-        x = torch.clamp(x, -1, 1)
+        # x = torch.clamp(x, -1, 1)
+        x = torch.clamp(x, 0, 1)
         # Denormalize from [-1, 1] to original range
-        x = (x + 1) / 2
+        # x = (x + 1) / 2
+
 
         value = x * (self.max_values - self.min_values) + self.min_values
         if is_numpy:

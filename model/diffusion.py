@@ -7,10 +7,9 @@ from torch import optim
 import logging
 import numpy as np
 import sched
-from google.cloud.aiplatform.constants import schedule
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda", scheduler_type=None):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda", scheduler_type=None, mu=0, sigma=0.3, episilon=1e-8):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -19,6 +18,9 @@ class Diffusion():
         self.beta = self.prepare_noise_schedule().to(device)
         self.alpha = 1. - self.beta
         self.alpha_hat = torch.cumprod(self.alpha, dim=0)
+        self.mu = mu
+        self.sigma = sigma
+        self.episilon = episilon
         self.device = device
 
     def prepare_noise_schedule(self):
@@ -27,7 +29,7 @@ class Diffusion():
     def noise_input(self, x, t):
         sqrt_alpha = torch.sqrt(self.alpha[t])[:, None, None]
         sqrt_one_minus_alpha = torch.sqrt(1 - self.alpha[t])[:, None, None]
-        Ɛ = torch.randn_like(x)
+        Ɛ = torch.randn_like(x) * self.sigma + self.mu
         return sqrt_alpha * x + sqrt_one_minus_alpha * Ɛ, Ɛ
     def sample_timesteps(self, n):
         return torch.randint(low=1, high=self.noise_steps, size=(n,), device=self.device)
@@ -36,7 +38,7 @@ class Diffusion():
     def sample(self, model,n, cfg_scale=3,save_rate=20, cond=None,mu=0, sigma=1):
         logging.info(f"Sampling {n} new images....")
         model.eval()
-        x = mu + sigma *  torch.randn((n, *self.input_shape)).to(self.device)
+        x = self.mu + self.sigma *  torch.randn((n, *self.input_shape)).to(self.device)
         if cond is not None:
             cond = cond.to(self.device)
 
@@ -58,7 +60,7 @@ class Diffusion():
             beta = self.beta[t][:, None, None]
 
             if i > 1:
-                noise = torch.randn_like(x)
+                noise = torch.randn_like(x) * self.sigma + self.mu
             else:
                 noise = torch.zeros_like(x)
 
@@ -96,7 +98,7 @@ class Diffusion():
             for t, value in constraints.items():
                 constraints[t] = normalizer(value)
         
-        x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
+        x = self.mu + self.sigma * torch.randn((n, *self.input_shape)).to(self.device)
         # set constraints
         for t, value in constraints.items():
             
@@ -119,7 +121,7 @@ class Diffusion():
             beta = self.beta[t][:, None, None]
 
             if i > 1:
-                noise = torch.randn_like(x)
+                noise = torch.randn_like(x) * self.sigma + self.mu
             else:
                 noise = torch.zeros_like(x)
 
@@ -154,10 +156,8 @@ class Diffusion():
             cond = cond.to(self.device)
 
         # sample from the paths by setting start and end points as start and end of the path
-        
 
-
-        x = mu + sigma * torch.randn((n, *self.input_shape)).to(self.device)
+        x = self.mu + self.sigma * torch.randn((n, *self.input_shape)).to(self.device)
         # set constraints
         start_pos = x[:, 0, :] = paths[:, 0]
         end_pos = x[:, -1, :] = paths[:, -1]
@@ -179,7 +179,7 @@ class Diffusion():
             beta = self.beta[t][:, None, None]
 
             if i > 1:
-                noise = torch.randn_like(x)
+                noise = torch.randn_like(x) * self.sigma + self.mu
             else:
                 noise = torch.zeros_like(x)
 
