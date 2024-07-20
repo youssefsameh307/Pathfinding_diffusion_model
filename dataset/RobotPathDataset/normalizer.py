@@ -48,7 +48,7 @@ class MinMaxFeatureNormalizer:
             self.max_values = self.max_values.to(x.device)
         # Normalize using min-max scaling
         x = (x - self.min_values) / (self.max_values - self.min_values + self.epsilon)
-        return x  # ADD * 2 - 1  TO Normalize to the range [-1, 1]
+        return x * 2 - 1 # ADD * 2 - 1  TO Normalize to the range [-1, 1]
     def denormalize(self, x, is_numpy=False):
         """
         Denormalize the input tensor using min-max normalization.
@@ -62,10 +62,10 @@ class MinMaxFeatureNormalizer:
        
         if is_numpy:
             x = torch.tensor(x).to(self.device)
-        # x = torch.clamp(x, -1, 1)
-        x = torch.clamp(x, 0, 1)
+        x = torch.clamp(x, -1, 1)
+        # x = torch.clamp(x, 0, 1)
         # Denormalize from [-1, 1] to original range
-        # x = (x + 1) / 2
+        x = (x + 1) / 2
 
 
         value = x * (self.max_values - self.min_values) + self.min_values
@@ -82,14 +82,16 @@ class MinMaxFeatureNormalizer:
 
 if __name__=='__main__':
     # Example usage
-    min_vals = [2.0, 5.0, 7.0]  # Minimum values for each feature
-    max_vals = [10.0, 20.0, 30.0]  # Maximum values for each feature
-    normalizer = MinMaxFeatureNormalizer(min_vals, max_vals)
+    min_vals = [0, 0, 0]  # Minimum values for each feature
+    max_vals = [10, 10, 10]  # Maximum values for each feature
+    normalizer = MinMaxFeatureNormalizer()
+    # Initialize the normalizer with the min and max values
+    normalizer.initialize(min_vals, max_vals)
 
     # Create a tensor with the shape (batch, timesteps, features)
     x = torch.tensor([
-        [[5.0, 10.0, 15.0], [10.0, 20.0, 30.0]],  # Batch 1
-        [[2.5, 5.0, 7.5], [7.5, 15.0, 22.5]]      # Batch 2
+        [[5.0, 10.0, 15.0], [10.0, 8.0, 30.0]],  # Batch 1
+        [[-2.5, 5.0, 7.5], [7.5, 15.0, 22.5]]      # Batch 2
     ])
 
     print('x.shape:', x.shape)
@@ -102,3 +104,8 @@ if __name__=='__main__':
 
     print("\nNormalized Tensor:")
     print(normalized_x)
+
+    print("\nDenormalized Tensor:")
+    # Denormalize the normalized tensor
+    denormalized_x = normalizer.denormalize(normalized_x)
+    print(denormalized_x)
