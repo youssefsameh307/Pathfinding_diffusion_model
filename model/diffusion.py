@@ -9,7 +9,7 @@ import numpy as np
 import sched
 class Diffusion():
 
-    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda", scheduler_type=None, mu=0, sigma=0.3, episilon=1e-8):
+    def __init__(self, input_shape=(20, 2),noise_steps=100, beta_start=1e-4, beta_end=0.02, device="cuda", scheduler_type=None, mu=0, sigma=0.4, episilon=1e-8):
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
@@ -44,6 +44,8 @@ class Diffusion():
 
         # array to keep track of generated steps for plotting
         intermediate = [] 
+        # add initial noise
+        intermediate.append(x)
         for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
 
             t = (torch.ones(n) * i).long().to(self.device)
@@ -106,6 +108,8 @@ class Diffusion():
 
         # array to keep track of generated steps for plotting
         intermediate = [] 
+        # add initial noise
+        intermediate.append(x)
         for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
 
             t = (torch.ones(n) * i).long().to(self.device)
@@ -164,6 +168,8 @@ class Diffusion():
 
         # array to keep track of generated steps for plotting
         intermediate = [] 
+        # add initial noise
+        intermediate.append(x)
         for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
 
             t = (torch.ones(n) * i).long().to(self.device)
